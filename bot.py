@@ -1,7 +1,7 @@
 import telebot
 from telebot import types
 import logging
-from config import BOT_TOKEN, INITIAL_BONUS_POINTS, FREE_COFFEE_AFTER
+from config import BOT_TOKEN, INITIAL_BONUS_POINTS, FREE_COFFEE_AFTER, ADMIN_IDS, DESSERT_PERCENTAGE
 from database import Database
 from keyboards import *
 from utils import *
@@ -17,15 +17,17 @@ db = Database()
 
 # Словари для хранения временных данных
 user_data = {}
-admin_mode = (1920466733, )
 
+def is_admin(user_id):
+    """Проверяет, является ли пользователь администратором"""
+    return user_id in ADMIN_IDS
 
 # Команда старт
 @bot.message_handler(commands=['start'])
 def start_command(message):
     user_id = message.from_user.id
 
-    if user_id in admin_mode:
+    if is_admin(user_id):
         bot.send_message(message.chat.id, "👨‍💼 Режим администратора", reply_markup=admin_menu())
         return
 
@@ -99,8 +101,9 @@ def process_gender_step(message):
         return
 
     user_data[user_id]['gender'] = message.text
-    bot.send_message(message.chat.id, "📱 Введите ваш номер телефона (например, +79123456789):",
-                     reply_markup=cancel_keyboard())
+    bot.send_message(message.chat.id,
+                    "📱 Поделитесь вашим номером телефона для регистрации в программе лояльности:",
+                    reply_markup=phone_keyboard())
     bot.register_next_step_handler(message, process_phone_step)
 
 
@@ -155,9 +158,30 @@ def process_phone_step(message):
 
         del user_data[user_id]
     else:
-        bot.send_message(message.chat.id, "❌ Неверный формат номера. Попробуйте еще раз:")
+        bot.send_message(message.chat.id, "❌ Неверный формат номера. Введите номер вручную:")
         bot.register_next_step_handler(message, process_phone_step)
 
+
+@bot.message_handler(content_types=['contact'])
+def handle_contact(message):
+    user_id = message.from_user.id
+
+    # Если пользователь в процессе регистрации
+    if user_id in user_data:
+        process_phone_step(message)
+    else:
+        # Если контакт отправлен вне регистрации
+        phone = validate_phone(message.contact.phone_number)
+        if phone:
+            client = db.get_client_by_phone(phone)
+            if client:
+                bot.send_message(message.chat.id,
+                                 f"✅ Найден профиль: {client['name']}\n"
+                                 f"📞 Телефон: {phone}",
+                                 reply_markup=main_menu())
+            else:
+                bot.send_message(message.chat.id,
+                                 "❌ Профиль с этим номером не найден. Зарегистрируйтесь с помощью /start")
 
 # Команды пользователя
 @bot.message_handler(func=lambda message: message.text == '👤 Мой профиль')
@@ -271,7 +295,10 @@ def process_new_phone(message):
 # Администраторские функции
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
-    # Здесь должна быть проверка прав администратора
+    if not is_admin(message.from_user.id):
+        bot.send_message(message.chat.id, "❌ У вас нет прав администратора.")
+        return
+
     bot.send_message(message.chat.id,
                      "🔐 *Режим администратора активирован*\n\n"
                      "Доступные функции:\n"
@@ -282,9 +309,9 @@ def admin_command(message):
                      reply_markup=admin_menu())
 
 
-@bot.message_handler(func=lambda message: message.text == '📱 Начислить баллы' and message.from_user.id in admin_mode)
+@bot.message_handler(func=lambda message: message.text == '📱 Начислить баллы' and is_admin(message.from_user.id))
 def add_points_start(message):
-    bot.send_message(message.chat.id, "📱 Введите номер телефона клиента (10 цифр):", reply_markup=cancel_keyboard())
+    bot.send_message(message.chat.id, "📱 Введите номер телефона клиента:", reply_markup=cancel_keyboard())
     bot.register_next_step_handler(message, process_admin_phone)
 
 
@@ -304,14 +331,17 @@ def process_admin_phone(message):
         bot.send_message(message.chat.id, "❌ Клиент с таким номером не найден.")
         return
 
-    user_data[message.from_user.id] = {'client_phone': phone, 'products': {}}
+    user_data[message.from_user.id] = {'client_phone': phone, 'client_name': client['name']}
 
-    bot.send_message(message.chat.id, f"👤 Клиент: {client['name']}\nВыберите продукты:",
-                     reply_markup=products_keyboard())
-    bot.register_next_step_handler(message, process_product_selection)
+    bot.send_message(message.chat.id,
+                     f"👤 Клиент: {client['name']}\n"
+                     f"☕ Счетчик кофе: {client['coffee_counter']}\n\n"
+                     "Выберите тип покупки:",
+                     reply_markup=purchase_type_keyboard())
+    bot.register_next_step_handler(message, process_purchase_type)
 
 
-def process_product_selection(message):
+def process_purchase_type(message):
     user_id = message.from_user.id
     admin_data = user_data.get(user_id, {})
 
@@ -321,77 +351,129 @@ def process_product_selection(message):
         bot.send_message(message.chat.id, "Операция отменена.", reply_markup=admin_menu())
         return
 
-    if message.text == '✅ Завершить выбор':
-        if not admin_data.get('products'):
-            bot.send_message(message.chat.id, "❌ Не выбрано ни одного продукта. Попробуйте еще раз:")
-            bot.register_next_step_handler(message, process_product_selection)
-            return
+    if message.text == '☕ Кофе':
+        # Обработка покупки кофе
+        free_coffee = db.add_coffee_purchase(admin_data['client_phone'])
 
-        # Рассчитываем баллы
-        points, total_amount, coffee_count = calculate_points(admin_data['products'])
+        if free_coffee:
+            # Это 6-я чашка - бесплатное кофе и сброс счетчика
+            db.reset_coffee_counter(admin_data['client_phone'])
 
-        # Начисляем баллы
-        db.add_points(admin_data['client_phone'], points, total_amount, admin_data['products'])
+            # Уведомляем клиента
+            client = db.get_client_by_phone(admin_data['client_phone'])
+            if client:
+                try:
+                    bot.send_message(
+                        client['telegram_id'],
+                        f"🎉 Поздравляем! Вы получили бесплатную чашку кофе! 🎉\n\n"
+                        f"Приходите в нашу кондитерскую и получите свой подарок! ☕\n"
+                        f"Счетчик кофе обнулен."
+                    )
+                except Exception as e:
+                    print(f"Не удалось отправить уведомление клиенту: {e}")
 
-        # Увеличиваем счетчик кофе
-        for _ in range(coffee_count):
-            free_coffee = db.increment_coffee_counter(admin_data['client_phone'])
-            if free_coffee:
-                # Уведомляем клиента о бесплатном кофе
-                client = db.get_client_by_phone(admin_data['client_phone'])
-                if client:
-                    try:
-                        bot.send_message(
-                            client['telegram_id'],
-                            f"🎉 Поздравляем! Вы получили бесплатную чашку кофе! 🎉\n\n"
-                            f"Приходите в нашу кондитерскую и получите свой подарок! ☕"
-                        )
-                    except:
-                        pass  # Если пользователь заблокировал бота
+            receipt = f"""
+☕ *Покупка кофе*
 
-        # Формируем чек
-        receipt = f"""
-🧾 *Чек покупки*
+👤 Клиент: {admin_data['client_name']}
+📞 Телефон: {admin_data['client_phone']}
 
-👤 Клиент: {db.get_client_by_phone(admin_data['client_phone'])['name']}
-📞 Телефон: +7{admin_data['client_phone']}
+🎉 *Это была 6-я чашка кофе!*
+💝 *Клиент получает бесплатное кофе!*
+🔄 *Счетчик кофе обнулен.*
 
-📦 *Товары:*
-"""
-        for product, quantity in admin_data['products'].items():
-            receipt += f"• {product} x{quantity} - {PRODUCTS[product] * quantity} руб.\n"
+Спасибо за покупку! ☕
+            """
+        else:
+            # Обычная покупка кофе
+            current_counter = db.get_coffee_counter(admin_data['client_phone'])
+            cups_until_free = FREE_COFFEE_AFTER - (current_counter % FREE_COFFEE_AFTER)
 
-        receipt += f"\n💰 *Итого:* {total_amount} руб."
-        receipt += f"\n💎 *Начислено баллов:* {points}"
-        receipt += f"\n☕ *Чашек кофе:* {coffee_count}"
+            receipt = f"""
+☕ *Покупка кофе*
 
-        if coffee_count > 0:
-            receipt += f"\n📊 *Общий счетчик кофе:* {db.get_client_by_phone(admin_data['client_phone'])['coffee_counter']}"
+👤 Клиент: {admin_data['client_name']}
+📞 Телефон: {admin_data['client_phone']}
+
+📊 *Текущий счетчик кофе:* {current_counter}
+🎯 *До бесплатного кофе осталось:* {cups_until_free} чашек
+
+Спасибо за покупку! ☕
+            """
 
         bot.send_message(message.chat.id, receipt, parse_mode='Markdown', reply_markup=admin_menu())
         del user_data[user_id]
+
+    elif message.text == '🍰 Десерты':
+        # Обработка покупки десертов
+        bot.send_message(message.chat.id, "💵 Введите сумму покупки десертов (в рублях):",
+                         reply_markup=cancel_keyboard())
+        bot.register_next_step_handler(message, process_dessert_amount)
+    else:
+        bot.send_message(message.chat.id, "❌ Пожалуйста, выберите тип покупки:", reply_markup=purchase_type_keyboard())
+        bot.register_next_step_handler(message, process_purchase_type)
+
+
+def process_dessert_amount(message):
+    user_id = message.from_user.id
+    admin_data = user_data.get(user_id, {})
+
+    if message.text == '❌ Отмена':
+        if user_id in user_data:
+            del user_data[user_id]
+        bot.send_message(message.chat.id, "Операция отменена.", reply_markup=admin_menu())
         return
 
-    product = message.text.lower()
-    if product in PRODUCTS:
-        if product not in admin_data['products']:
-            admin_data['products'][product] = 0
-        admin_data['products'][product] += 1
+    amount = validate_amount(message.text)
+    if not amount:
+        bot.send_message(message.chat.id, "❌ Неверная сумма. Введите число больше 0:")
+        bot.register_next_step_handler(message, process_dessert_amount)
+        return
 
-        # Обновляем данные
-        user_data[user_id] = admin_data
+    # Рассчитываем баллы
+    points = calculate_dessert_points(amount)
 
-        bot.send_message(message.chat.id, f"✅ {product} добавлен. Выберите еще продукты или завершите выбор:",
-                         reply_markup=products_keyboard())
-        bot.register_next_step_handler(message, process_product_selection)
-    else:
-        bot.send_message(message.chat.id, "❌ Продукт не найден. Выберите из списка:",
-                         reply_markup=products_keyboard())
-        bot.register_next_step_handler(message, process_product_selection)
+    # Начисляем баллы
+    db.add_dessert_purchase(admin_data['client_phone'], amount, points)
+
+    # Формируем чек
+    receipt = f"""
+🍰 *Покупка десертов*
+
+👤 Клиент: {admin_data['client_name']}
+📞 Телефон: {admin_data['client_phone']}
+
+💰 *Сумма покупки:* {amount} руб.
+💎 *Начислено баллов:* {points} ({DESSERT_PERCENTAGE}%)
+💳 *Всего баллов у клиента:* {db.get_client_by_phone(admin_data['client_phone'])['points']}
+
+Спасибо за покупку! 🍰
+    """
+
+    bot.send_message(message.chat.id, receipt, parse_mode='Markdown', reply_markup=admin_menu())
+
+    # Уведомляем клиента о начисленных баллах
+    client = db.get_client_by_phone(admin_data['client_phone'])
+    if client:
+        try:
+            bot.send_message(
+                client['telegram_id'],
+                f"🍰 *Спасибо за покупку десертов!*\n\n"
+                f"💎 Вам начислено: {points} баллов\n"
+                f"💰 Сумма покупки: {amount} руб.\n"
+                f"💳 Всего баллов: {client['points']}\n\n"
+                f"Ждем вас снова! 🎂",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            print(f"Не удалось отправить уведомление клиенту: {e}")
+
+    del user_data[user_id]
+
 
 
 # Поиск клиента администратором (добавленная функция)
-@bot.message_handler(func=lambda message: message.text == '👥 Поиск клиента' and message.from_user.id in admin_mode)
+@bot.message_handler(func=lambda message: message.text == '👥 Поиск клиента' and is_admin(message.from_user.id))
 def search_client_start(message):
     bot.send_message(message.chat.id, "🔍 Введите номер телефона клиента для поиска (10 цифр):",
                      reply_markup=cancel_keyboard())
@@ -458,7 +540,7 @@ def format_client_info_for_admin(client):
 
 
 # Статистика
-@bot.message_handler(func=lambda message: message.text == '📊 Статистика' and message.from_user.id in admin_mode)
+@bot.message_handler(func=lambda message: message.text == '📊 Статистика' and is_admin(message.from_user.id))
 def show_statistics(message):
     """Показывает общую статистику"""
     conn = sqlite3.connect('loyalty.db')
@@ -493,15 +575,13 @@ def show_statistics(message):
 """
 
     for i, (name, phone, points) in enumerate(top_clients, 1):
-        stats_text += f"{i}. {name} (+7{phone}) - {points} баллов\n"
+        stats_text += f"{i}. {name} ({phone}) - {points} баллов\n"
 
     bot.send_message(message.chat.id, stats_text, parse_mode='Markdown', reply_markup=admin_menu())
 
 
-@bot.message_handler(func=lambda message: message.text == '🔙 Главное меню' and message.from_user.id in admin_mode)
+@bot.message_handler(func=lambda message: message.text == '🔙 Главное меню' and is_admin(message.from_user.id))
 def exit_admin_mode(message):
-    if message.from_user.id in admin_mode:
-        admin_mode.remove(message.from_user.id)
     bot.send_message(message.chat.id, "👋 Возвращаемся в главное меню", reply_markup=main_menu())
 
 

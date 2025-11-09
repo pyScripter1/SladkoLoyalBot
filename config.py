@@ -1,19 +1,13 @@
 import os
 
 # Конфигурация бота
-BOT_TOKEN = os.getenv('BOT_TOKEN', '')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8558652101:AAFVJ6XcyRF2jiz7n_YSZpp4fVxMcp7expI')
 
 # Настройки лояльности
 INITIAL_BONUS_POINTS = 100
-COFFEE_PERCENTAGE = 10  # 10% от стоимости кофе начисляется баллами
+DESSERT_PERCENTAGE = 3  # 3% от стоимости десертов начисляется баллами
 FREE_COFFEE_AFTER = 6  # Каждая 6-я чашка бесплатная
 
-# Цены на продукты (можно расширять)
-PRODUCTS = {
-    "кофе": 300,
-    "чай": 200,
-    "пирожное": 250,
-    "торт": 500,
-    "эклер": 180,
-    "макарон": 220
-}
+# Список администраторов
+ADMIN_IDS = []  # Ваш Telegram ID
+

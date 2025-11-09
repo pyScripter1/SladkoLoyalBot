@@ -47,17 +47,13 @@ def start_command(message):
         bot.send_message(message.chat.id, welcome_back, parse_mode='Markdown', reply_markup=main_menu())
     else:
         welcome_text = """
-✨ *Добро пожаловать в нашу кондитерскую!* ✨
+Добро пожаловать в систему лояльности *кондитерской Sladko!* 🎂
 
-🍰 *Сладкие моменты начинаются здесь!* 🍰
+• Получайте 100 баллов за регистрацию
+• Копите от 3% с каждой покупки
+• Каждая 6-я чашка кофе — в подарок
 
-Зарегистрируйтесь в нашей программе лояльности и получайте:
-• 🎁 100 баллов при регистрации
-• 💎 Начисление баллов за каждую покупку
-• ☕ Бесплатную чашку кофе за каждые 5 покупок
-• 🎂 Специальные предложения в день рождения
-
-*Давайте начнем! Введите ваше имя:*
+*Давайте начнём вкусное знакомство* — введите своё имя ⬇️
         """
         bot.send_message(message.chat.id, welcome_text, parse_mode='Markdown')
         bot.register_next_step_handler(message, process_name_step)
@@ -68,8 +64,13 @@ def process_name_step(message):
     user_data[user_id] = {'name': message.text}
 
     bot.send_message(message.chat.id,
-                     "📅 Теперь введите вашу дату рождения в формате ДД.ММ.ГГГГ (например, 15.05.1990):",
-                     reply_markup=cancel_keyboard())
+                     """
+                     Чтобы сделать ваш день рождения ещё слаще — укажите дату!
+
+Введите её в формате *ДД.ММ.ГГГГ* 
+(например, 15.05.1990) ✨
+""",
+                     parse_mode='Markdown', reply_markup=cancel_keyboard())
     bot.register_next_step_handler(message, process_birth_date_step)
 
 
@@ -85,7 +86,7 @@ def process_birth_date_step(message):
 
     if birth_date:
         user_data[user_id]['birth_date'] = birth_date
-        bot.send_message(message.chat.id, "⚧ Выберите ваш пол:", reply_markup=gender_keyboard())
+        bot.send_message(message.chat.id, "*Выберите свой пол* — чтобы мы могли делать для вас ещё более персональные и приятные предложения:", parse_mode='Markdown', reply_markup=gender_keyboard())
         bot.register_next_step_handler(message, process_gender_step)
     else:
         bot.send_message(message.chat.id, "❌ Неверный формат даты. Попробуйте еще раз (ДД.ММ.ГГГГ):")
@@ -103,19 +104,111 @@ def process_gender_step(message):
     user_data[user_id]['gender'] = message.text
 
     help_text = """
-📱 *Способы указания номера телефона:*
+*❗️Способы указания номера телефона:*
 
-1. *Автоматически* - нажмите кнопку "📱 Поделиться номером"
-2. *Вручную* - введите номер в формате: +79123456789 или 89123456789
+1. *Автоматически* - нажмите кнопку "Поделиться номером"
+2. *Вручную* - нажмите кнопку "Ввести номер вручную" и введите номер в формате: +79123456789 или 89123456789
 
-Рекомендуем использовать автоматический способ - это быстрее и надежнее!
+_Рекомендуем использовать автоматический способ_ - это быстрее и надежнее!
     """
 
     bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
     bot.send_message(message.chat.id,
-                     "📱 Поделитесь вашим номером телефона для регистрации в программе лояльности:",
+                     "*Поделитесь вашим номером телефона* для регистрации в программе лояльности:",
+                     parse_mode='Markdown',
                      reply_markup=phone_keyboard())
-    bot.register_next_step_handler(message, process_phone_step)
+    # УБИРАЕМ register_next_step_handler здесь, потому что контакт обрабатывается отдельно
+
+def process_phone_choice(message):
+    user_id = message.from_user.id
+
+    if message.text == '❌ Отмена':
+        del user_data[user_id]
+        bot.send_message(message.chat.id, "Регистрация отменена.", reply_markup=types.ReplyKeyboardRemove())
+        return
+
+    if message.text == '📝 Ввести номер вручную':
+        bot.send_message(message.chat.id,
+                        "📝 Введите ваш номер телефона в формате +79123456789 или 89123456789:",
+                        reply_markup=manual_phone_keyboard())
+        bot.register_next_step_handler(message, process_manual_phone)
+        return
+
+    # Если пользователь нажал "Поделиться номером" - просто ждем контакт
+    if message.text == "📱 Поделиться номером":
+        # Ничего не делаем, просто ждем когда пользователь отправит контакт
+        # Обработчик handle_contact сам перехватит контакт
+        return
+
+    # Если это не кнопка, а сразу введен номер
+    phone = validate_phone(message.text)
+    if phone:
+        process_valid_phone(user_id, phone)
+    else:
+        bot.send_message(message.chat.id,
+                        "❌ Неверный формат номера. Пожалуйста, выберите способ ввода:",
+                        reply_markup=phone_keyboard())
+        bot.register_next_step_handler(message, process_phone_choice)
+
+def process_manual_phone(message):
+    user_id = message.from_user.id
+
+    if message.text == '❌ Отмена':
+        del user_data[user_id]
+        bot.send_message(message.chat.id, "Регистрация отменена.", reply_markup=types.ReplyKeyboardRemove())
+        return
+
+    phone = validate_phone(message.text)
+    if phone:
+        process_valid_phone(user_id, phone)
+    else:
+        bot.send_message(message.chat.id,
+                        "❌ Неверный формат номера. Введите номер в формате +79123456789 или 89123456789:",
+                        reply_markup=manual_phone_keyboard())
+        bot.register_next_step_handler(message, process_manual_phone)
+
+
+def process_valid_phone(user_id, phone):
+    """Обработка валидного номера телефона"""
+    print(f"Processing valid phone: {phone}")
+
+    # Проверяем, не зарегистрирован ли уже этот номер
+    existing_client = db.get_client_by_phone(phone)
+    if existing_client:
+        bot.send_message(user_id, "❌ Этот номер телефона уже зарегистрирован.")
+        if user_id in user_data:
+            del user_data[user_id]
+        return
+
+    user_data[user_id]['phone'] = phone
+
+    # Сохраняем пользователя в базу
+    success = db.add_client(
+        user_id,
+        user_data[user_id]['name'],
+        user_data[user_id].get('birth_date'),
+        user_data[user_id].get('gender'),
+        phone
+    )
+
+    if success:
+        welcome_message = f"""
+🧁 * Поздравляем с регистрацией, {user_data[user_id]['name']}!* 
+
+ *Вам начислено: {INITIAL_BONUS_POINTS} баллов*
+
+Теперь вы можете:
+• Получать *кешбэк от 3%* с каждой покупки десертов
+• *Наслаждать бесплатным кофе* после 5 сладких визитов
+
+_Используйте меню ниже и откройте все вкусные возможности Sladko!_ 💛
+        """
+        bot.send_message(user_id, welcome_message, parse_mode='Markdown', reply_markup=main_menu())
+    else:
+        bot.send_message(user_id, "❌ Произошла ошибка при регистрации. Попробуйте позже.")
+
+    if user_id in user_data:
+        del user_data[user_id]
 
 
 def process_phone_step(message):
@@ -156,19 +249,15 @@ def process_phone_step(message):
 
         if success:
             welcome_message = f"""
-🎊 *Поздравляем с регистрацией, {user_data[user_id]['name']}!* 🎊
+🧁 * Поздравляем с регистрацией, {user_data[user_id]['name']}!* 
 
-✅ *Вы успешно зарегистрированы в нашей программе лояльности!*
-
-🎁 *Вам начислено: {INITIAL_BONUS_POINTS} баллов*
-📞 *Ваш номер: {phone}*
+ *Вам начислено: {INITIAL_BONUS_POINTS} баллов*
 
 Теперь вы можете:
-• 💎 Копить баллы за покупки
-• ☕ Получать бесплатное кофе
-• 🎂 Получать специальные предложения
+• Получать *кешбэк от 3%* с каждой покупки десертов
+• *Наслаждать бесплатным кофе* после 5 сладких визитов
 
-*Используйте меню ниже для управления профилем!*
+_Используйте меню ниже и откройте все вкусные возможности Sladko!_ 💛
             """
             bot.send_message(message.chat.id, welcome_message, parse_mode='Markdown', reply_markup=main_menu())
         else:
@@ -185,55 +274,18 @@ def process_phone_step(message):
 @bot.message_handler(content_types=['contact'])
 def handle_contact(message):
     user_id = message.from_user.id
+    print(f"Contact received from user {user_id}: {message.contact}")
 
     # Если пользователь в процессе регистрации
     if user_id in user_data:
         phone = validate_phone(message.contact)
+        print(f"Validated phone: {phone}")
         if phone:
-            # Проверяем, не зарегистрирован ли уже этот номер
-            existing_client = db.get_client_by_phone(phone)
-            if existing_client:
-                bot.send_message(message.chat.id, "❌ Этот номер телефона уже зарегистрирован.")
-                del user_data[user_id]
-                return
-
-            user_data[user_id]['phone'] = phone
-
-            # Сохраняем пользователя в базу
-            success = db.add_client(
-                user_id,
-                user_data[user_id]['name'],
-                user_data[user_id].get('birth_date'),
-                user_data[user_id].get('gender'),
-                phone
-            )
-
-            if success:
-                welcome_message = f"""
-🎊 *Поздравляем с регистрацией, {user_data[user_id]['name']}!* 🎊
-
-✅ *Вы успешно зарегистрированы в нашей программе лояльности!*
-
-🎁 *Вам начислено: {INITIAL_BONUS_POINTS} баллов*
-📞 *Ваш номер: {phone}*
-
-Теперь вы можете:
-• 💎 Копить баллы за покупки
-• ☕ Получать бесплатное кофе
-• 🎂 Получать специальные предложения
-
-*Используйте меню ниже для управления профилем!*
-                """
-                bot.send_message(message.chat.id, welcome_message, parse_mode='Markdown', reply_markup=main_menu())
-            else:
-                bot.send_message(message.chat.id, "❌ Произошла ошибка при регистрации. Попробуйте позже.")
-
-            del user_data[user_id]
+            process_valid_phone(user_id, phone)
         else:
             bot.send_message(message.chat.id,
-                           "❌ Не удалось распознать номер телефона. Пожалуйста, введите номер вручную:",
-                           reply_markup=cancel_keyboard())
-            bot.register_next_step_handler(message, process_phone_step)
+                           "❌ Не удалось распознать номер телефона. Пожалуйста, попробуйте другой способ:",
+                           reply_markup=phone_keyboard())
     else:
         # Если контакт отправлен вне регистрации
         phone = validate_phone(message.contact)
@@ -249,7 +301,40 @@ def handle_contact(message):
                                "❌ Профиль с этим номером не найден. Зарегистрируйтесь с помощью /start")
         else:
             bot.send_message(message.chat.id,
-                           "❌ Не удалось распознать номер телефона.")
+                           "❌ Не удалось распознать номер телефона. Зарегистрируйтесь с помощью /start")
+
+
+@bot.message_handler(func=lambda message: message.text == "📱 Поделиться номером")
+def handle_share_phone_button(message):
+    """Обрабатывает нажатие на кнопку 'Поделиться номером'"""
+    user_id = message.from_user.id
+    print(f"Share phone button pressed by user {user_id}")
+
+    if user_id in user_data:
+        # Просто напоминаем пользователю отправить контакт
+        bot.send_message(message.chat.id,
+                         "Пожалуйста, нажмите на кнопку '📱 Поделиться номером' ниже и подтвердите отправку контакта.",
+                         reply_markup=phone_keyboard())
+    else:
+        bot.send_message(message.chat.id,
+                         "Начните регистрацию с помощью /start")
+
+
+@bot.message_handler(func=lambda message: message.text == "📝 Ввести номер вручную")
+def handle_manual_phone_button(message):
+    """Обрабатывает нажатие на кнопку 'Ввести номер вручную'"""
+    user_id = message.from_user.id
+    print(f"Manual phone button pressed by user {user_id}")
+
+    if user_id in user_data:
+        bot.send_message(message.chat.id,
+                         "📝 Введите ваш номер телефона в формате +79123456789 или 89123456789:",
+                         reply_markup=manual_phone_keyboard())
+        bot.register_next_step_handler(message, process_manual_phone)
+    else:
+        bot.send_message(message.chat.id,
+                         "Начните регистрацию с помощью /start")
+
 
 # Команды пользователя
 @bot.message_handler(func=lambda message: message.text == '👤 Мой профиль')
@@ -267,13 +352,14 @@ def show_points(message):
     client = db.get_client_by_telegram_id(message.from_user.id)
     if client:
         points_text = f"""
-💎 *Ваши баллы: {client['points']}*
+*Ваш сладкий кешбэк: {client['points']}*
 
-🎯 *Как использовать баллы?*
-1 балл = 1 рубль скидки
-Просто сообщите администратору о желании использовать баллы при оплате!
+✨ *Как использовать баллы?*
+1 балл = 1 рубль 
+За одну покупку можно оплатить до *50%* суммы!
 
-💰 *Накоплено всего: {client['total_spent']} руб.*
+Просто скажите администратору, что хотите оплатить часть заказа баллами — и наслаждайтесь скидкой со вкусом! 💛
+
         """
         bot.send_message(message.chat.id, points_text, parse_mode='Markdown')
     else:
@@ -288,14 +374,11 @@ def show_coffee_counter(message):
         cups_until_free = FREE_COFFEE_AFTER - coffee_progress
 
         coffee_text = f"""
-☕ *Ваша кофейная статистика:*
+*Ваша кофейная статистика, {client['name']}*
 
-🍵 *Выпито чашек кофе:* {client['coffee_counter']}
-🎯 *До бесплатного кофе:* {cups_until_free} чашек
-
-{'🎉 *Следующая чашка кофе бесплатная!*' if coffee_progress == 0 and client['coffee_counter'] > 0 else ''}
-
-*Каждая {FREE_COFFEE_AFTER}-я чашка кофе бесплатна!*
+☕️ Выпито чашек кофе: {client['coffee_counter']}
+{'☕️ *Следующая чашка кофе бесплатная!*' if coffee_progress == 0 and client['coffee_counter'] > 0 else ''}
+И помните: *каждая {FREE_COFFEE_AFTER}-я чашка кофе в подарок!*
         """
         bot.send_message(message.chat.id, coffee_text, parse_mode='Markdown')
     else:

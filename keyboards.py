@@ -12,8 +12,7 @@ def main_menu():
 def admin_menu():
     """Меню для администратора"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add('📱 Начислить баллы', '📊 Статистика')
-    keyboard.add('👥 Поиск клиента', '🔙 Главное меню')
+    keyboard.add('📱 Начислить баллы', '📊 Статистика', '👥 Поиск клиента')
     return keyboard
 
 
@@ -24,24 +23,13 @@ def gender_keyboard():
     keyboard.add('Не указывать')
     return keyboard
 
-
-def products_keyboard():
-    """Клавиатура для выбора продуктов"""
+def purchase_type_keyboard():
+    """Клавиатура для выбора типа покупки"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    products = ["кофе", "чай", "пирожное", "торт", "эклер", "макарон"]
-
-    # Создаем кнопки по 2 в ряду
-    row = []
-    for product in products:
-        row.append(product)
-        if len(row) == 2:
-            keyboard.add(*row)
-            row = []
-    if row:
-        keyboard.add(*row)
-
-    keyboard.add('✅ Завершить выбор')
+    keyboard.add('☕ Кофе', '🍰 Десерты')
+    keyboard.add('❌ Отмена')
     return keyboard
+
 
 
 def cancel_keyboard():
@@ -55,4 +43,13 @@ def yes_no_keyboard():
     """Клавиатура Да/Нет"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add('✅ Да', '❌ Нет')
+    return keyboard
+
+
+def phone_keyboard():
+    """Клавиатура для запроса номера телефона"""
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    button = types.KeyboardButton("📱 Поделиться номером", request_contact=True)
+    keyboard.add(button)
+    keyboard.add('📝 Ввести номер вручную', '❌ Отмена')
     return keyboard

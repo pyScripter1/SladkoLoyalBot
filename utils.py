@@ -5,7 +5,20 @@ from config import DESSERT_PERCENTAGE, FREE_COFFEE_AFTER
 
 def validate_phone(phone):
     """Валидация номера телефона"""
-    return phone
+    if not phone:
+        return None
+
+    # Если это объект контакта, берем phone_number
+    if hasattr(phone, 'phone_number'):
+        phone = phone.phone_number
+
+    # Убираем все нецифровые символы кроме +
+    if isinstance(phone, str):
+        return phone
+    else:
+        return None
+
+
 
 
 def validate_date(date_string):
@@ -29,6 +42,7 @@ def validate_amount(amount_string):
         return amount
     except ValueError:
         return None
+
 
 def calculate_dessert_points(amount):
     """Расчет баллов за десерты"""

@@ -101,9 +101,20 @@ def process_gender_step(message):
         return
 
     user_data[user_id]['gender'] = message.text
+
+    help_text = """
+📱 *Способы указания номера телефона:*
+
+1. *Автоматически* - нажмите кнопку "📱 Поделиться номером"
+2. *Вручную* - введите номер в формате: +79123456789 или 89123456789
+
+Рекомендуем использовать автоматический способ - это быстрее и надежнее!
+    """
+
+    bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
     bot.send_message(message.chat.id,
-                    "📱 Поделитесь вашим номером телефона для регистрации в программе лояльности:",
-                    reply_markup=phone_keyboard())
+                     "📱 Поделитесь вашим номером телефона для регистрации в программе лояльности:",
+                     reply_markup=phone_keyboard())
     bot.register_next_step_handler(message, process_phone_step)
 
 
@@ -113,6 +124,13 @@ def process_phone_step(message):
     if message.text == '❌ Отмена':
         del user_data[user_id]
         bot.send_message(message.chat.id, "Регистрация отменена.", reply_markup=types.ReplyKeyboardRemove())
+        return
+
+    # Если пользователь нажал "Поделиться номером" но не отправил контакт
+    if message.text == "📱 Поделиться номером":
+        bot.send_message(message.chat.id,
+                        "Пожалуйста, нажмите на кнопку '📱 Поделиться номером' и подтвердите отправку контакта.",
+                        reply_markup=phone_keyboard())
         return
 
     phone = validate_phone(message.text)
@@ -158,7 +176,9 @@ def process_phone_step(message):
 
         del user_data[user_id]
     else:
-        bot.send_message(message.chat.id, "❌ Неверный формат номера. Введите номер вручную:")
+        bot.send_message(message.chat.id,
+                        "❌ Неверный формат номера. Пожалуйста, введите номер вручную или поделитесь контактом:",
+                        reply_markup=phone_keyboard())
         bot.register_next_step_handler(message, process_phone_step)
 
 
@@ -168,20 +188,68 @@ def handle_contact(message):
 
     # Если пользователь в процессе регистрации
     if user_id in user_data:
-        process_phone_step(message)
+        phone = validate_phone(message.contact)
+        if phone:
+            # Проверяем, не зарегистрирован ли уже этот номер
+            existing_client = db.get_client_by_phone(phone)
+            if existing_client:
+                bot.send_message(message.chat.id, "❌ Этот номер телефона уже зарегистрирован.")
+                del user_data[user_id]
+                return
+
+            user_data[user_id]['phone'] = phone
+
+            # Сохраняем пользователя в базу
+            success = db.add_client(
+                user_id,
+                user_data[user_id]['name'],
+                user_data[user_id].get('birth_date'),
+                user_data[user_id].get('gender'),
+                phone
+            )
+
+            if success:
+                welcome_message = f"""
+🎊 *Поздравляем с регистрацией, {user_data[user_id]['name']}!* 🎊
+
+✅ *Вы успешно зарегистрированы в нашей программе лояльности!*
+
+🎁 *Вам начислено: {INITIAL_BONUS_POINTS} баллов*
+📞 *Ваш номер: {phone}*
+
+Теперь вы можете:
+• 💎 Копить баллы за покупки
+• ☕ Получать бесплатное кофе
+• 🎂 Получать специальные предложения
+
+*Используйте меню ниже для управления профилем!*
+                """
+                bot.send_message(message.chat.id, welcome_message, parse_mode='Markdown', reply_markup=main_menu())
+            else:
+                bot.send_message(message.chat.id, "❌ Произошла ошибка при регистрации. Попробуйте позже.")
+
+            del user_data[user_id]
+        else:
+            bot.send_message(message.chat.id,
+                           "❌ Не удалось распознать номер телефона. Пожалуйста, введите номер вручную:",
+                           reply_markup=cancel_keyboard())
+            bot.register_next_step_handler(message, process_phone_step)
     else:
         # Если контакт отправлен вне регистрации
-        phone = validate_phone(message.contact.phone_number)
+        phone = validate_phone(message.contact)
         if phone:
             client = db.get_client_by_phone(phone)
             if client:
                 bot.send_message(message.chat.id,
-                                 f"✅ Найден профиль: {client['name']}\n"
-                                 f"📞 Телефон: {phone}",
-                                 reply_markup=main_menu())
+                               f"✅ Найден профиль: {client['name']}\n"
+                               f"📞 Телефон: {phone}",
+                               reply_markup=main_menu())
             else:
                 bot.send_message(message.chat.id,
-                                 "❌ Профиль с этим номером не найден. Зарегистрируйтесь с помощью /start")
+                               "❌ Профиль с этим номером не найден. Зарегистрируйтесь с помощью /start")
+        else:
+            bot.send_message(message.chat.id,
+                           "❌ Не удалось распознать номер телефона.")
 
 # Команды пользователя
 @bot.message_handler(func=lambda message: message.text == '👤 Мой профиль')

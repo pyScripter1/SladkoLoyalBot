@@ -1,6 +1,5 @@
 from telebot import types
 
-
 def main_menu():
     """Главное меню для пользователя"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -8,13 +7,12 @@ def main_menu():
     keyboard.add('☕ Счетчик кофе', '✏️ Редактировать профиль')
     return keyboard
 
-
 def admin_menu():
     """Меню для администратора"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add('📱 Начислить баллы', '📊 Статистика', '👥 Поиск клиента')
+    keyboard.add('📱 Начислить баллы', '📊 Статистика')
+    keyboard.add('👥 Поиск клиента', '🔙 Главное меню')
     return keyboard
-
 
 def gender_keyboard():
     """Клавиатура для выбора пола"""
@@ -30,8 +28,6 @@ def purchase_type_keyboard():
     keyboard.add('❌ Отмена')
     return keyboard
 
-
-
 def cancel_keyboard():
     """Клавиатура для отмены действия"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -39,17 +35,22 @@ def cancel_keyboard():
     return keyboard
 
 
-def yes_no_keyboard():
-    """Клавиатура Да/Нет"""
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add('✅ Да', '❌ Нет')
+def phone_keyboard():
+    """Клавиатура для запроса номера телефона"""
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+
+    # Кнопка для отправки контакта - ОБЯЗАТЕЛЬНО с request_contact=True
+    contact_btn = types.KeyboardButton("📱 Поделиться номером", request_contact=True)
+
+    keyboard.add(contact_btn)
+    keyboard.add(types.KeyboardButton('📝 Ввести номер вручную'))
+    keyboard.add(types.KeyboardButton('❌ Отмена'))
+
     return keyboard
 
 
-def phone_keyboard():
-    """Клавиатура для запроса номера телефона"""
+def manual_phone_keyboard():
+    """Клавиатура для ручного ввода номера"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    button = types.KeyboardButton("📱 Поделиться номером", request_contact=True)
-    keyboard.add(button)
-    keyboard.add('📝 Ввести номер вручную', '❌ Отмена')
+    keyboard.add('❌ Отмена')
     return keyboard

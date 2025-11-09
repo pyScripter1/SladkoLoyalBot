@@ -1,24 +1,54 @@
 import re
 from datetime import datetime
+
+from telebot.types import Contact
+
 from config import DESSERT_PERCENTAGE, FREE_COFFEE_AFTER
 
 
 def validate_phone(phone):
+    print(f"validate_phone received: {phone}, type: {type(phone)}")
     """Валидация номера телефона"""
     if not phone:
+        print("Phone is None or empty")
         return None
 
     # Если это объект контакта, берем phone_number
-    if hasattr(phone, 'phone_number'):
+    if isinstance(phone, Contact):
+        print("Processing Contact object")
         phone = phone.phone_number
+        print(f"Extracted phone from Contact: {phone}")
 
-    # Убираем все нецифровые символы кроме +
+    # Если у объекта есть атрибут phone_number, используем его
+    elif hasattr(phone, 'phone_number'):
+        print("Object has phone_number attribute")
+        phone = phone.phone_number
+        print(f"Extracted phone from object: {phone}")
+
+    # Если это строка, проверяем формат
     if isinstance(phone, str):
-        return phone
+        print(f"Processing string phone: {phone}")
+        # Убираем все нецифровые символы кроме +
+        if phone.startswith('+'):
+            cleaned_phone = '+' + re.sub(r'\D', '', phone[1:])
+        else:
+            cleaned_phone = '+' + re.sub(r'\D', '', phone)
+
+        # Проверяем длину (10 или 11 цифр без +)
+        digits_only = re.sub(r'\D', '', cleaned_phone)
+        print(f"Cleaned phone: {cleaned_phone}, digits only: {digits_only}, length: {len(digits_only)}")
+
+        # Проверяем длину (10 цифр для формата +7..., 11 цифр для международных номеров)
+        if len(digits_only) in [10, 11]:
+            print(f"Phone validation successful: {cleaned_phone}")
+            return cleaned_phone
+        else:
+            print(f"Invalid phone length: {len(digits_only)}")
     else:
-        return None
+        print(f"Phone is not string, type: {type(phone)}")
 
-
+    print("Phone validation failed")
+    return None
 
 
 def validate_date(date_string):
@@ -52,26 +82,23 @@ def calculate_dessert_points(amount):
 
 def format_profile(client):
     """Форматирование профиля клиента для отображения"""
-    profile = f"👤 *Ваш профиль:*\n\n"
-    profile += f"📛 *Имя:* {client['name']}\n"
-    profile += f"📞 *Телефон:* {client['phone']}\n"
+    profile = f"*Ваш профиль, {client['name']}*\n\n"
+    profile += f"Телефон: {client['phone']}\n"
 
     if client['birth_date']:
-        profile += f"🎂 *Дата рождения:* {client['birth_date']}\n"
-    if client['gender'] and client['gender'] != 'Не указывать':
-        profile += f"⚧ *Пол:* {client['gender']}\n"
+        profile += f"Дата рождения: {client['birth_date']}\n\n"
 
-    profile += f"💎 *Баллы:* {client['points']}\n"
-    profile += f"☕ *Выпито чашек кофе:* {client['coffee_counter']}\n"
-    profile += f"💰 *Всего потрачено:* {client['total_spent']} руб.\n"
+
+    profile += f"• Кешбэк: {client['points']}\n"
+    profile += f"• Выпито чашек кофе: {client['coffee_counter']}\n"
 
     # Показываем прогресс до бесплатного кофе
     coffee_progress = client['coffee_counter'] % FREE_COFFEE_AFTER
     cups_until_free = FREE_COFFEE_AFTER - coffee_progress
 
     if coffee_progress == 0 and client['coffee_counter'] > 0:
-        profile += f"\n🎉 *Следующая чашка кофе бесплатная!*"
+        profile += f"\n☕️ *Следующая чашка кофе бесплатная!*"
     else:
-        profile += f"\n📊 *До бесплатного кофе осталось:* {cups_until_free} чашек"
+        profile += f"\n☕️ *До бесплатного кофе осталось:* {cups_until_free} чашек"
 
     return profile

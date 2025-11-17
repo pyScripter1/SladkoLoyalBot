@@ -200,3 +200,36 @@ class Database:
         conn.close()
 
         return counter
+
+    def deduct_points(self, phone, points_to_deduct):
+        """Списание баллов у клиента"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+
+        try:
+            # Получаем текущее количество баллов
+            cursor.execute('SELECT points FROM clients WHERE phone = ?', (phone,))
+            current_points = cursor.fetchone()[0]
+
+            # Проверяем, достаточно ли баллов
+            if current_points < points_to_deduct:
+                return False, "Недостаточно баллов"
+
+            # Списание баллов
+            cursor.execute('UPDATE clients SET points = points - ? WHERE phone = ?',
+                           (points_to_deduct, phone))
+
+            # Добавляем запись о транзакции списания
+            cursor.execute('''
+                INSERT INTO transactions (client_phone, amount, points_earned, products, date, transaction_type)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (phone, 0, -points_to_deduct, "списание баллов", datetime.now().isoformat(), "points_deduction"))
+
+            conn.commit()
+            return True, "Баллы успешно списаны"
+
+        except Exception as e:
+            conn.rollback()
+            return False, f"Ошибка при списании баллов: {str(e)}"
+        finally:
+            conn.close()

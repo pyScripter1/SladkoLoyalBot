@@ -80,6 +80,21 @@ def calculate_dessert_points(amount):
     return points
 
 
+def calculate_points_deduction(purchase_amount, available_points):
+    """
+    Расчет списываемых баллов (50% от суммы покупки, но не более доступных баллов)
+
+    Args:
+        purchase_amount (float): Сумма покупки
+        available_points (int): Доступные баллы клиента
+
+    Returns:
+        int: Количество баллов для списания
+    """
+    max_deduction = int(purchase_amount * 0.5)  # 50% от суммы
+    return min(max_deduction, available_points)
+
+
 def format_profile(client):
     """Форматирование профиля клиента для отображения"""
     profile = f"*Ваш профиль, {client['name']}*\n\n"

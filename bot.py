@@ -50,7 +50,7 @@ def start_command(message):
 Добро пожаловать в систему лояльности *кондитерской Sladko!* 🎂
 
 • Получайте 100 баллов за регистрацию
-• Копите от 3% с каждой покупки
+• Копите 3% с каждой покупки
 • Каждая 6-я чашка кофе — в подарок
 
 *Давайте начнём вкусное знакомство* — введите своё имя ⬇️
@@ -198,7 +198,7 @@ def process_valid_phone(user_id, phone):
  *Вам начислено: {INITIAL_BONUS_POINTS} баллов*
 
 Теперь вы можете:
-• Получать *кешбэк от 3%* с каждой покупки десертов
+• Получать *кешбэк 3%* с каждой покупки десертов
 • *Наслаждать бесплатным кофе* после 5 сладких визитов
 
 _Используйте меню ниже и откройте все вкусные возможности Sladko!_ 💛
@@ -270,6 +270,173 @@ _Используйте меню ниже и откройте все вкусн�
                         reply_markup=phone_keyboard())
         bot.register_next_step_handler(message, process_phone_step)
 
+
+def process_deduct_phone(message):
+    """Обработка номера телефона для списания баллов"""
+    if message.text == '❌ Отмена':
+        bot.send_message(message.chat.id, "Операция отменена.", reply_markup=admin_menu())
+        return
+
+    phone = validate_phone(message.text)
+    if not phone:
+        bot.send_message(message.chat.id, "❌ Неверный формат номера. Попробуйте еще раз:")
+        bot.register_next_step_handler(message, process_deduct_phone)
+        return
+
+    client = db.get_client_by_phone(phone)
+    if not client:
+        bot.send_message(message.chat.id, "❌ Клиент с таким номером не найден.")
+        return
+
+    # Сохраняем данные клиента для следующего шага
+    user_data[message.from_user.id] = {
+        'client_phone': phone,
+        'client_name': client['name'],
+        'client_points': client['points'],
+        'action': 'deduct_points'
+    }
+
+    info_text = f"""
+👤 *Клиент:* {client['name']}
+📞 *Телефон:* {phone}
+💎 *Текущие баллы:* {client['points']}
+
+💵 *Введите сумму покупки (в рублях) для списания 50% баллов:*
+    """
+
+    bot.send_message(message.chat.id, info_text, parse_mode='Markdown', reply_markup=cancel_keyboard())
+    bot.register_next_step_handler(message, process_purchase_amount_for_deduction)
+
+
+def process_purchase_amount_for_deduction(message):
+    """Обработка суммы покупки для списания баллов"""
+    user_id = message.from_user.id
+    admin_data = user_data.get(user_id, {})
+
+    if message.text == '❌ Отмена':
+        if user_id in user_data:
+            del user_data[user_id]
+        bot.send_message(message.chat.id, "Операция отменена.", reply_markup=admin_menu())
+        return
+
+    if admin_data.get('action') != 'deduct_points':
+        bot.send_message(message.chat.id, "❌ Ошибка процесса. Начните заново.")
+        if user_id in user_data:
+            del user_data[user_id]
+        return
+
+    # Валидируем сумму покупки
+    amount = validate_amount(message.text)
+    if not amount:
+        bot.send_message(message.chat.id, "❌ Неверная сумма. Введите число больше 0:")
+        bot.register_next_step_handler(message, process_purchase_amount_for_deduction)
+        return
+
+    # Рассчитываем 50% от суммы покупки (максимальное списание)
+    max_deduction = amount * 0.5
+    points_to_deduct = min(int(max_deduction), admin_data['client_points'])
+
+    # Обновляем данные в user_data
+    user_data[user_id]['purchase_amount'] = amount
+    user_data[user_id]['points_to_deduct'] = points_to_deduct
+
+    confirmation_text = f"""
+💰 *Подтверждение списания баллов*
+
+👤 Клиент: {admin_data['client_name']}
+📞 Телефон: {admin_data['client_phone']}
+
+💵 Сумма покупки: {amount} руб.
+💎 Максимальное списание (50%): {int(max_deduction)} баллов
+💳 Доступно баллов: {admin_data['client_points']}
+
+✅ *Будет списано: {points_to_deduct} баллов*
+
+Подтвердите списание:
+    """
+
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add('✅ Подтвердить списание', '❌ Отмена')
+
+    bot.send_message(message.chat.id, confirmation_text, parse_mode='Markdown', reply_markup=keyboard)
+    bot.register_next_step_handler(message, process_deduction_confirmation)
+
+
+def process_deduction_confirmation(message):
+    """Обработка подтверждения списания баллов"""
+    user_id = message.from_user.id
+    admin_data = user_data.get(user_id, {})
+
+    if message.text == '❌ Отмена':
+        if user_id in user_data:
+            del user_data[user_id]
+        bot.send_message(message.chat.id, "Операция отменена.", reply_markup=admin_menu())
+        return
+
+    if message.text != '✅ Подтвердить списание':
+        bot.send_message(message.chat.id, "❌ Операция отменена.", reply_markup=admin_menu())
+        if user_id in user_data:
+            del user_data[user_id]
+        return
+
+    # Выполняем списание баллов
+    success, message_text = db.deduct_points(
+        admin_data['client_phone'],
+        admin_data['points_to_deduct']
+    )
+
+    if success:
+        # Получаем обновленные данные клиента
+        updated_client = db.get_client_by_phone(admin_data['client_phone'])
+
+        receipt_text = f"""
+✅ *Списание баллов успешно выполнено*
+
+👤 Клиент: {admin_data['client_name']}
+📞 Телефон: {admin_data['client_phone']}
+
+💵 Сумма покупки: {admin_data['purchase_amount']} руб.
+💎 Списано баллов: {admin_data['points_to_deduct']}
+💳 Осталось баллов: {updated_client['points']}
+
+💰 Клиент оплатил баллами: {admin_data['points_to_deduct']} руб.
+💵 К оплате: {admin_data['purchase_amount'] - admin_data['points_to_deduct']} руб.
+
+Спасибо за покупку! 🍰
+        """
+
+        # Уведомляем клиента о списании баллов
+        try:
+            client = db.get_client_by_phone(admin_data['client_phone'])
+            if client and client['telegram_id']:
+                bot.send_message(
+                    client['telegram_id'],
+                    f"💸 *Списание баллов*\n\n"
+                    f"С вашего счета списано: {admin_data['points_to_deduct']} баллов\n"
+                    f"💳 Остаток баллов: {updated_client['points']}\n"
+                    f"💰 Сумма покупки: {admin_data['purchase_amount']} руб.\n\n"
+                    f"Спасибо за покупку! 🎂",
+                    parse_mode='Markdown'
+                )
+        except Exception as e:
+            print(f"Не удалось отправить уведомление клиенту: {e}")
+
+    else:
+        receipt_text = f"❌ {message_text}"
+
+    bot.send_message(message.chat.id, receipt_text, parse_mode='Markdown', reply_markup=admin_menu())
+
+    # Очищаем временные данные
+    if user_id in user_data:
+        del user_data[user_id]
+
+
+@bot.message_handler(func=lambda message: message.text == '💸 Списать баллы' and is_admin(message.from_user.id))
+def deduct_points_start(message):
+    """Начало процесса списания баллов"""
+    bot.send_message(message.chat.id, "💸 Введите номер телефона клиента для списания баллов:",
+                     reply_markup=cancel_keyboard())
+    bot.register_next_step_handler(message, process_deduct_phone)
 
 @bot.message_handler(content_types=['contact'])
 def handle_contact(message):

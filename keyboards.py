@@ -11,7 +11,8 @@ def admin_menu():
     """Меню для администратора"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add('📱 Начислить баллы', '📊 Статистика')
-    keyboard.add('👥 Поиск клиента', '🔙 Главное меню')
+    keyboard.add('👥 Поиск клиента', '💸 Списать баллы')  # Новая кнопка
+    keyboard.add('🔙 Главное меню')
     return keyboard
 
 def gender_keyboard():

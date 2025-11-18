@@ -670,7 +670,7 @@ def process_purchase_type(message):
 
     if message.text == '☕ Кофе':
         # Обработка покупки кофе
-        free_coffee = db.add_coffee_purchase(admin_data['client_phone'])
+        free_coffee, old_counter, new_counter = db.add_coffee_purchase(admin_data['client_phone'])
 
         if free_coffee:
             # Это 6-я чашка - бесплатное кофе и сброс счетчика
@@ -706,6 +706,17 @@ def process_purchase_type(message):
             current_counter = db.get_coffee_counter(admin_data['client_phone'])
             cups_until_free = FREE_COFFEE_AFTER - (current_counter % FREE_COFFEE_AFTER)
 
+            # Уведомляем клиента о начислении чашки кофе
+            client = db.get_client_by_phone(admin_data['client_phone'])
+            if client:
+                try:
+                    bot.send_message(
+                        client['telegram_id'],
+                        f"☕️ *Начислена чашка кофе!*"
+                    )
+                except Exception as e:
+                    print(f"Не удалось отправить уведомление клиенту: {e}")
+
             receipt = f"""
 ☕ *Покупка кофе*
 
@@ -714,6 +725,8 @@ def process_purchase_type(message):
 
 📊 *Текущий счетчик кофе:* {current_counter}
 🎯 *До бесплатного кофе осталось:* {cups_until_free} чашек
+
+✅ *Клиент уведомлен о начислении чашки кофе*
 
 Спасибо за покупку! ☕
             """

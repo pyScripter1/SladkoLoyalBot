@@ -411,10 +411,9 @@ def process_deduction_confirmation(message):
             if client and client['telegram_id']:
                 bot.send_message(
                     client['telegram_id'],
-                    f"💸 *Списание баллов*\n\n"
+                    f"*Списание баллов* 🍩\n\n"
                     f"С вашего счета списано: {admin_data['points_to_deduct']} баллов\n"
-                    f"💳 Остаток баллов: {updated_client['points']}\n"
-                    f"💰 Сумма покупки: {admin_data['purchase_amount']} руб.\n\n"
+                    f"Остаток баллов: {updated_client['points']}\n"
                     f"Спасибо за покупку! 🎂",
                     parse_mode='Markdown'
                 )
@@ -776,10 +775,9 @@ def process_dessert_amount(message):
         try:
             bot.send_message(
                 client['telegram_id'],
-                f"🍰 *Спасибо за покупку десертов!*\n\n"
-                f"💎 Вам начислено: {points} баллов\n"
-                f"💰 Сумма покупки: {amount} руб.\n"
-                f"💳 Всего баллов: {client['points']}\n\n"
+                f"*Спасибо за покупку десертов!* 🧁\n\n"
+                f"Вам начислено: {points} баллов\n"
+                f"Всего баллов: {client['points']}\n\n"
                 f"Ждем вас снова! 🎂",
                 parse_mode='Markdown'
             )

@@ -237,3 +237,27 @@ class Database:
             return False, f"Ошибка при списании баллов: {str(e)}"
         finally:
             conn.close()
+
+    def get_total_clients_count(self):
+        """Получение общего количества клиентов"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM clients')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
+    def get_all_clients(self):
+        """Получение списка всех клиентов"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('SELECT telegram_id, name, phone FROM clients')
+        clients = []
+        for row in cursor.fetchall():
+            clients.append({
+                'telegram_id': row[0],
+                'name': row[1],
+                'phone': row[2]
+            })
+        conn.close()
+        return clients

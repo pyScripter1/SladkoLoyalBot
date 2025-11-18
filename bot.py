@@ -953,10 +953,18 @@ def text_broadcast(message):
 
     broadcast_data[user_id]['message_type'] = 'text'
 
-    bot.send_message(message.chat.id,
-                     "📝 Введите текст рассылки:\n\n*Поддерживается Markdown разметка:*\n• *жирный*\n• _курсив_\n• [ссылка](https://example.com)",
-                     parse_mode='Markdown',
-                     reply_markup=cancel_keyboard())
+    formatting_help = """
+📝 ФОРМАТИРОВАНИЕ ТЕКСТА
+
+Вы можете использовать Markdown разметку:
+
+*Жирный текст*
+_Курсивный текст_
+
+Теперь введите текст рассылки:
+    """
+
+    bot.send_message(message.chat.id, formatting_help, reply_markup=cancel_keyboard())
 
     bot.register_next_step_handler(message, process_broadcast_text)
 
@@ -1064,8 +1072,7 @@ def preview_broadcast(message):
         bot.send_message(message.chat.id,
                          "📊 *Статистика рассылки:*\n\n" +
                          f"👥 Будет отправлено: *{db.get_total_clients_count()}* клиентам\n" +
-                         f"📝 Тип: *{'С фото' if data.get('message_type') == 'photo' else 'Только текст'}*\n" +
-                         f"📏 Длина текста: *{len(data['text'])}* символов",
+                         f"📝 Тип: *{'С фото' if data.get('message_type') == 'photo' else 'Только текст'}*\n",
                          parse_mode='Markdown',
                          reply_markup=broadcast_keyboard())
 
@@ -1109,7 +1116,7 @@ def send_broadcast(message):
 
     data = broadcast_data[user_id]
 
-    # Получаем всех клиентов
+    # Получаем всех клиентов через базу данных
     clients = db.get_all_clients()
     total_clients = len(clients)
 

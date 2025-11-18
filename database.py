@@ -144,12 +144,16 @@ class Database:
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
 
+        # Получаем текущий счетчик перед обновлением
+        cursor.execute('SELECT coffee_counter FROM clients WHERE phone = ?', (phone,))
+        old_counter = cursor.fetchone()[0]
+
         # Увеличиваем счетчик кофе
         cursor.execute('UPDATE clients SET coffee_counter = coffee_counter + 1 WHERE phone = ?', (phone,))
 
         # Получаем обновленный счетчик
         cursor.execute('SELECT coffee_counter FROM clients WHERE phone = ?', (phone,))
-        counter = cursor.fetchone()[0]
+        new_counter = cursor.fetchone()[0]
 
         # Добавляем запись о транзакции
         cursor.execute('''
@@ -160,8 +164,8 @@ class Database:
         conn.commit()
         conn.close()
 
-        # Возвращаем True если это 6-я чашка (бесплатная)
-        return counter % FREE_COFFEE_AFTER == 0
+        # Возвращаем кортеж: (это бесплатная чашка, старый счетчик, новый счетчик)
+        return new_counter % FREE_COFFEE_AFTER == 0, old_counter, new_counter
 
     def add_dessert_purchase(self, phone, amount, points):
         """Добавление покупки десертов с начислением баллов"""

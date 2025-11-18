@@ -11,8 +11,22 @@ def admin_menu():
     """Меню для администратора"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add('📱 Начислить баллы', '📊 Статистика')
-    keyboard.add('👥 Поиск клиента', '💸 Списать баллы')  # Новая кнопка
-    keyboard.add('🔙 Главное меню')
+    keyboard.add('👥 Поиск клиента', '💸 Списать баллы')
+    keyboard.add('📢 Создать рассылку', '🔙 Главное меню')  # Новая кнопка
+    return keyboard
+
+def broadcast_keyboard():
+    """Клавиатура для создания рассылки"""
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add('📝 Только текст', '🖼️ С фотографией')
+    keyboard.add('👀 Предпросмотр', '✅ Отправить всем')
+    keyboard.add('❌ Отменить рассылку')
+    return keyboard
+
+def confirm_broadcast_keyboard():
+    """Клавиатура для подтверждения рассылки"""
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add('✅ Да, отправить всем', '❌ Нет, отменить')
     return keyboard
 
 def gender_keyboard():

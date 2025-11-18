@@ -18,6 +18,9 @@ db = Database()
 # Словари для хранения временных данных
 user_data = {}
 
+# Глобальные переменные для хранения данных рассылки
+broadcast_data = {}
+
 def is_admin(user_id):
     """Проверяет, является ли пользователь администратором"""
     return user_id in ADMIN_IDS
@@ -907,6 +910,302 @@ def show_statistics(message):
         stats_text += f"{i}. {name} ({phone}) - {points} баллов\n"
 
     bot.send_message(message.chat.id, stats_text, parse_mode='Markdown', reply_markup=admin_menu())
+
+
+@bot.message_handler(func=lambda message: message.text == '📢 Создать рассылку' and is_admin(message.from_user.id))
+def start_broadcast(message):
+    """Начало создания рассылки"""
+    user_id = message.from_user.id
+
+    # Инициализируем данные рассылки
+    broadcast_data[user_id] = {
+        'text': None,
+        'photo': None,
+        'message_type': None,
+        'preview_message_id': None
+    }
+
+    help_text = """
+📢 *Создание рассылки*
+
+Вы можете создать рассылку двух типов:
+• 📝 *Только текст* - текстовое сообщение
+• 🖼️ *С фотографией* - сообщение с изображением и текстом
+
+*Процесс:*
+1. Выберите тип рассылки
+2. Введите текст сообщения
+3. Если нужно - прикрепите фото
+4. Посмотрите предпросмотр
+5. Отправьте всем клиентам
+    """
+
+    bot.send_message(message.chat.id, help_text, parse_mode='Markdown', reply_markup=broadcast_keyboard())
+
+
+@bot.message_handler(func=lambda message: message.text == '📝 Только текст' and is_admin(message.from_user.id))
+def text_broadcast(message):
+    """Выбор рассылки только с текстом"""
+    user_id = message.from_user.id
+
+    if user_id not in broadcast_data:
+        broadcast_data[user_id] = {}
+
+    broadcast_data[user_id]['message_type'] = 'text'
+
+    bot.send_message(message.chat.id,
+                     "📝 Введите текст рассылки:\n\n*Поддерживается Markdown разметка:*\n• *жирный*\n• _курсив_\n• [ссылка](https://example.com)",
+                     parse_mode='Markdown',
+                     reply_markup=cancel_keyboard())
+
+    bot.register_next_step_handler(message, process_broadcast_text)
+
+
+@bot.message_handler(func=lambda message: message.text == '🖼️ С фотографией' and is_admin(message.from_user.id))
+def photo_broadcast(message):
+    """Выбор рассылки с фотографией"""
+    user_id = message.from_user.id
+
+    if user_id not in broadcast_data:
+        broadcast_data[user_id] = {}
+
+    broadcast_data[user_id]['message_type'] = 'photo'
+
+    bot.send_message(message.chat.id,
+                     "🖼️ Отправьте фотографию для рассылки:",
+                     reply_markup=cancel_keyboard())
+
+
+@bot.message_handler(content_types=['photo'], func=lambda message: is_admin(message.from_user.id))
+def process_broadcast_photo(message):
+    """Обработка фотографии для рассылки"""
+    user_id = message.from_user.id
+
+    if user_id not in broadcast_data or broadcast_data[user_id].get('message_type') != 'photo':
+        return
+
+    # Сохраняем file_id фотографии
+    broadcast_data[user_id]['photo'] = message.photo[-1].file_id
+
+    bot.send_message(message.chat.id,
+                     "✅ Фотография получена! Теперь введите текст для рассылки:\n\n*Поддерживается Markdown разметка*",
+                     parse_mode='Markdown',
+                     reply_markup=cancel_keyboard())
+
+    bot.register_next_step_handler(message, process_broadcast_text)
+
+
+def process_broadcast_text(message):
+    """Обработка текста рассылки"""
+    user_id = message.from_user.id
+
+    if message.text == '❌ Отмена':
+        if user_id in broadcast_data:
+            del broadcast_data[user_id]
+        bot.send_message(message.chat.id, "❌ Рассылка отменена.", reply_markup=admin_menu())
+        return
+
+    if user_id not in broadcast_data:
+        bot.send_message(message.chat.id, "❌ Ошибка: данные рассылки потеряны. Начните заново.",
+                         reply_markup=admin_menu())
+        return
+
+    # Сохраняем текст
+    broadcast_data[user_id]['text'] = message.text
+
+    bot.send_message(message.chat.id,
+                     "✅ Текст сохранен! Теперь вы можете:\n\n• 👀 Посмотреть предпросмотр\n• ✅ Отправить всем клиентам",
+                     reply_markup=broadcast_keyboard())
+
+
+@bot.message_handler(func=lambda message: message.text == '👀 Предпросмотр' and is_admin(message.from_user.id))
+def preview_broadcast(message):
+    """Предпросмотр рассылки"""
+    user_id = message.from_user.id
+
+    if user_id not in broadcast_data:
+        bot.send_message(message.chat.id, "❌ Сначала создайте рассылку.", reply_markup=broadcast_keyboard())
+        return
+
+    data = broadcast_data[user_id]
+
+    if not data.get('text'):
+        bot.send_message(message.chat.id, "❌ Текст рассылки не заполнен.", reply_markup=broadcast_keyboard())
+        return
+
+    preview_text = "👀 *ПРЕДПРОСМОТР РАССЫЛКИ*\n\n" + data['text']
+
+    try:
+        if data.get('message_type') == 'photo' and data.get('photo'):
+            # Удаляем предыдущее сообщение предпросмотра, если есть
+            if data.get('preview_message_id'):
+                try:
+                    bot.delete_message(message.chat.id, data['preview_message_id'])
+                except:
+                    pass
+
+            # Отправляем фото с текстом
+            sent_message = bot.send_photo(message.chat.id,
+                                          data['photo'],
+                                          caption=preview_text,
+                                          parse_mode='Markdown')
+            broadcast_data[user_id]['preview_message_id'] = sent_message.message_id
+        else:
+            # Только текст
+            if data.get('preview_message_id'):
+                try:
+                    bot.delete_message(message.chat.id, data['preview_message_id'])
+                except:
+                    pass
+
+            sent_message = bot.send_message(message.chat.id, preview_text, parse_mode='Markdown')
+            broadcast_data[user_id]['preview_message_id'] = sent_message.message_id
+
+        bot.send_message(message.chat.id,
+                         "📊 *Статистика рассылки:*\n\n" +
+                         f"👥 Будет отправлено: *{db.get_total_clients_count()}* клиентам\n" +
+                         f"📝 Тип: *{'С фото' if data.get('message_type') == 'photo' else 'Только текст'}*\n" +
+                         f"📏 Длина текста: *{len(data['text'])}* символов",
+                         parse_mode='Markdown',
+                         reply_markup=broadcast_keyboard())
+
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Ошибка при предпросмотре: {str(e)}", reply_markup=broadcast_keyboard())
+
+
+@bot.message_handler(func=lambda message: message.text == '✅ Отправить всем' and is_admin(message.from_user.id))
+def confirm_broadcast(message):
+    """Подтверждение отправки рассылки"""
+    user_id = message.from_user.id
+
+    if user_id not in broadcast_data or not broadcast_data[user_id].get('text'):
+        bot.send_message(message.chat.id, "❌ Сначала создайте рассылку.", reply_markup=broadcast_keyboard())
+        return
+
+    total_clients = db.get_total_clients_count()
+
+    confirm_text = f"""
+⚠️ *ПОДТВЕРЖДЕНИЕ РАССЫЛКИ*
+
+📝 *Тип:* {'🖼️ С фотографией' if broadcast_data[user_id].get('message_type') == 'photo' else '📝 Только текст'}
+👥 *Получатели:* {total_clients} клиентов
+
+*Вы уверены, что хотите отправить эту рассылку всем клиентам?*
+
+*Действие нельзя отменить!*
+    """
+
+    bot.send_message(message.chat.id, confirm_text, parse_mode='Markdown', reply_markup=confirm_broadcast_keyboard())
+
+
+@bot.message_handler(func=lambda message: message.text == '✅ Да, отправить всем' and is_admin(message.from_user.id))
+def send_broadcast(message):
+    """Отправка рассылки всем клиентам"""
+    user_id = message.from_user.id
+
+    if user_id not in broadcast_data:
+        bot.send_message(message.chat.id, "❌ Данные рассылки не найдены.", reply_markup=admin_menu())
+        return
+
+    data = broadcast_data[user_id]
+
+    # Получаем всех клиентов
+    clients = db.get_all_clients()
+    total_clients = len(clients)
+
+    if total_clients == 0:
+        bot.send_message(message.chat.id, "❌ В базе нет клиентов для рассылки.", reply_markup=admin_menu())
+        return
+
+    # Отправляем начальное сообщение о прогрессе
+    progress_message = bot.send_message(message.chat.id,
+                                        f"📤 *Начинаем рассылку...*\n\n0/{total_clients} отправлено",
+                                        parse_mode='Markdown')
+
+    success_count = 0
+    fail_count = 0
+    failed_clients = []
+
+    # Отправляем сообщения всем клиентам
+    for i, client in enumerate(clients, 1):
+        try:
+            if data.get('message_type') == 'photo' and data.get('photo'):
+                # Отправляем фото с текстом
+                bot.send_photo(client['telegram_id'],
+                               data['photo'],
+                               caption=data['text'],
+                               parse_mode='Markdown')
+            else:
+                # Отправляем только текст
+                bot.send_message(client['telegram_id'],
+                                 data['text'],
+                                 parse_mode='Markdown')
+
+            success_count += 1
+
+        except Exception as e:
+            fail_count += 1
+            failed_clients.append({
+                'name': client['name'],
+                'phone': client['phone'],
+                'error': str(e)
+            })
+
+        # Обновляем прогресс каждые 10 сообщений или на последнем
+        if i % 10 == 0 or i == total_clients:
+            try:
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=progress_message.message_id,
+                    text=f"📤 *Рассылка в процессе...*\n\n{i}/{total_clients} отправлено\n✅ Успешно: {success_count}\n❌ Ошибок: {fail_count}",
+                    parse_mode='Markdown'
+                )
+            except:
+                pass
+
+        # Небольшая задержка чтобы не превысить лимиты Telegram
+        import time
+        if i % 20 == 0:
+            time.sleep(1)
+
+    # Формируем отчет
+    report_text = f"""
+📊 *ОТЧЕТ О РАССЫЛКЕ*
+
+✅ *Успешно отправлено:* {success_count} клиентам
+❌ *Не удалось отправить:* {fail_count} клиентам
+📈 *Эффективность:* {success_count / total_clients * 100:.1f}%
+
+👥 *Всего в базе:* {total_clients} клиентов
+    """
+
+    if failed_clients:
+        report_text += f"\n\n*Клиенты, которым не удалось отправить:*\n"
+        for client in failed_clients[:10]:  # Показываем первые 10 ошибок
+            report_text += f"• {client['name']} ({client['phone']})\n"
+
+        if len(failed_clients) > 10:
+            report_text += f"• ... и еще {len(failed_clients) - 10} клиентов\n"
+
+    # Отправляем финальный отчет
+    bot.send_message(message.chat.id, report_text, parse_mode='Markdown', reply_markup=admin_menu())
+
+    # Очищаем данные рассылки
+    if user_id in broadcast_data:
+        del broadcast_data[user_id]
+
+
+@bot.message_handler(
+    func=lambda message: message.text in ['❌ Отменить рассылку', '❌ Нет, отменить'] and is_admin(message.from_user.id))
+def cancel_broadcast(message):
+    """Отмена рассылки"""
+    user_id = message.from_user.id
+
+    if user_id in broadcast_data:
+        del broadcast_data[user_id]
+
+    bot.send_message(message.chat.id, "❌ Рассылка отменена.", reply_markup=admin_menu())
+
 
 
 @bot.message_handler(func=lambda message: message.text == '🔙 Главное меню' and is_admin(message.from_user.id))

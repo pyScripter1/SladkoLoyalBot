@@ -1,4 +1,15 @@
 from telebot import types
+from config import CHANNEL_URL
+
+def subscription_keyboard():
+    """Клавиатура для подписки на канал"""
+    keyboard = types.InlineKeyboardMarkup()
+    subscribe_btn = types.InlineKeyboardButton("📢 Подписаться на канал", url=CHANNEL_URL)
+    check_btn = types.InlineKeyboardButton("✅ Я подписался", callback_data="check_subscription")
+    keyboard.add(subscribe_btn)
+    keyboard.add(check_btn)
+    return keyboard
+
 
 def main_menu():
     """Главное меню для пользователя"""

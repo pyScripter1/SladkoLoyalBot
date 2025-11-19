@@ -3,7 +3,20 @@ from datetime import datetime
 
 from telebot.types import Contact
 
-from config import DESSERT_PERCENTAGE, FREE_COFFEE_AFTER
+from config import DESSERT_PERCENTAGE, FREE_COFFEE_AFTER, CHANNEL_ID
+
+
+def check_channel_subscription(bot, user_id, channel_id):
+    """
+    Проверяет, подписан ли пользователь на канал
+    """
+    try:
+        member = bot.get_chat_member(channel_id, user_id)
+        print(f"Статус пользователя {user_id} в канале: {member.status}")
+        return member.status in ['member', 'administrator', 'creator']
+    except Exception as e:
+        print(f"Ошибка при проверке подписки пользователя {user_id}: {e}")
+        return False
 
 
 def validate_phone(phone):

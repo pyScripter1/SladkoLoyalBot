@@ -1,7 +1,7 @@
 import telebot
 from telebot import types
 import logging
-from config import BOT_TOKEN, INITIAL_BONUS_POINTS, FREE_COFFEE_AFTER, ADMIN_IDS, DESSERT_PERCENTAGE
+from config import BOT_TOKEN, INITIAL_BONUS_POINTS, FREE_COFFEE_AFTER, ADMIN_IDS, DESSERT_PERCENTAGE, CHANNEL_USERNAME, CHANNEL_ID, CHANNEL_URL
 from database import Database
 from keyboards import *
 from utils import *
@@ -17,18 +17,124 @@ db = Database()
 
 # Словари для хранения временных данных
 user_data = {}
-
-# Глобальные переменные для хранения данных рассылки
-broadcast_data = {}
+user_subscription_status = {}  # Кэш статуса подписки
+broadcast_data = {}  # Данные для рассылки
 
 def is_admin(user_id):
     """Проверяет, является ли пользователь администратором"""
     return user_id in ADMIN_IDS
 
+
+def check_subscription_required(user_id):
+    """Проверяет, требуется ли подписка для пользователя"""
+    # Администраторам не требуется подписка
+    if is_admin(user_id):
+        return False
+
+    # Проверяем кэш
+    if user_id in user_subscription_status:
+        return not user_subscription_status[user_id]
+
+    # Проверяем подписку
+    is_subscribed = check_channel_subscription(bot, user_id, CHANNEL_ID)
+    user_subscription_status[user_id] = is_subscribed
+
+    return not is_subscribed
+
+
+def show_subscription_required(message):
+    """Показывает сообщение о необходимости подписки"""
+    subscription_text = f"""
+🧁 *Добро пожаловать!*
+
+Для использования бота необходимо подписаться на наш канал {CHANNEL_USERNAME}
+
+На канале вы найдете:
+• Специальные акции и предложения
+• Новинки меню
+• Расписание мероприятий
+• Эксклюзивные скидки для подписчиков
+
+*После подписки нажмите кнопку «✅ Я подписался»*
+    """
+
+    bot.send_message(
+        message.chat.id,
+        subscription_text,
+        parse_mode='Markdown',
+        reply_markup=subscription_keyboard()
+    )
+
+
+# Обработчик callback для проверки подписки
+@bot.callback_query_handler(func=lambda call: call.data == "check_subscription")
+def handle_subscription_check(call):
+    user_id = call.from_user.id
+
+    # Проверяем подписку
+    is_subscribed = check_channel_subscription(bot, user_id, CHANNEL_ID)
+    user_subscription_status[user_id] = is_subscribed
+
+    if is_subscribed:
+        # Удаляем сообщение с кнопками подписки
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+
+        # Показываем приветственное сообщение
+        welcome_text = """
+🧁 *Отлично! Спасибо за подписку!*
+
+Теперь вы можете пользоваться всеми функциями бота:
+
+• Зарегистрироваться в системе лояльности
+• Копить и тратить баллы
+• Участвовать в кофейной программе
+• Получать персональные предложения
+
+*Начните с регистрации — нажмите /start*
+        """
+        bot.send_message(call.message.chat.id, welcome_text, parse_mode='Markdown')
+    else:
+        # Показываем сообщение, что подписка не найдена
+        bot.answer_callback_query(
+            call.id,
+            "❌ Вы еще не подписались на канал. Пожалуйста, подпишитесь и попробуйте снова.",
+            show_alert=True
+        )
+
+
+# Добавляем проверку подписки ко всем основным обработчикам
+def subscription_required(func):
+    """Декоратор для проверки подписки"""
+
+    def wrapper(message):
+        user_id = message.from_user.id
+
+        # Администраторам не требуется подписка
+        if is_admin(user_id):
+            return func(message)
+
+        # Проверяем подписку
+        if check_subscription_required(user_id):
+            show_subscription_required(message)
+            return
+
+        return func(message)
+
+    return wrapper
+
+
 # Команда старт
 @bot.message_handler(commands=['start'])
 def start_command(message):
     user_id = message.from_user.id
+
+    # Проверяем подписку (кроме администраторов)
+    if check_subscription_required(user_id):
+        show_subscription_required(message)
+        return
 
     if is_admin(user_id):
         bot.send_message(message.chat.id, "👨‍💼 Режим администратора", reply_markup=admin_menu())
@@ -474,6 +580,7 @@ def handle_contact(message):
 
 
 @bot.message_handler(func=lambda message: message.text == "📱 Поделиться номером")
+@subscription_required
 def handle_share_phone_button(message):
     """Обрабатывает нажатие на кнопку 'Поделиться номером'"""
     user_id = message.from_user.id
@@ -490,6 +597,7 @@ def handle_share_phone_button(message):
 
 
 @bot.message_handler(func=lambda message: message.text == "📝 Ввести номер вручную")
+@subscription_required
 def handle_manual_phone_button(message):
     """Обрабатывает нажатие на кнопку 'Ввести номер вручную'"""
     user_id = message.from_user.id
@@ -507,6 +615,7 @@ def handle_manual_phone_button(message):
 
 # Команды пользователя
 @bot.message_handler(func=lambda message: message.text == '👤 Мой профиль')
+@subscription_required
 def show_profile(message):
     client = db.get_client_by_telegram_id(message.from_user.id)
     if client:
@@ -517,6 +626,7 @@ def show_profile(message):
 
 
 @bot.message_handler(func=lambda message: message.text == '💎 Мои баллы')
+@subscription_required
 def show_points(message):
     client = db.get_client_by_telegram_id(message.from_user.id)
     if client:
@@ -536,6 +646,7 @@ def show_points(message):
 
 
 @bot.message_handler(func=lambda message: message.text == '☕ Счетчик кофе')
+@subscription_required
 def show_coffee_counter(message):
     client = db.get_client_by_telegram_id(message.from_user.id)
     if client:
@@ -555,6 +666,7 @@ def show_coffee_counter(message):
 
 
 @bot.message_handler(func=lambda message: message.text == '✏️ Редактировать профиль')
+@subscription_required
 def edit_profile(message):
     client = db.get_client_by_telegram_id(message.from_user.id)
     if client:

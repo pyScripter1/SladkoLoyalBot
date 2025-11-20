@@ -5,6 +5,7 @@ from config import BOT_TOKEN, INITIAL_BONUS_POINTS, FREE_COFFEE_AFTER, ADMIN_IDS
 from database import Database
 from keyboards import *
 from utils import *
+from birthday_scheduler import start_birthday_scheduler
 import sqlite3
 
 # Настройка логирования
@@ -1336,4 +1337,12 @@ def exit_admin_mode(message):
 # Запуск бота
 if __name__ == '__main__':
     print("Бот запущен...")
+
+    # Запускаем планировщик дней рождения
+    try:
+        start_birthday_scheduler()
+        print("✅ Birthday scheduler initialized")
+    except Exception as e:
+        print(f"❌ Failed to start birthday scheduler: {e}")
+
     bot.infinity_polling()

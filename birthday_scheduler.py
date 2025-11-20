@@ -1,11 +1,15 @@
 import schedule
 import time
 import threading
+import os
 from datetime import datetime, timedelta
 from database import Database
 from config import BIRTHDAY_NOTIFICATION_DAYS, BIRTHDAY_NOTIFICATION_TIME, BIRTHDAY_BONUS_POINTS
 import telebot
 from config import BOT_TOKEN
+
+# Создаем папку data если ее нет
+os.makedirs('data', exist_ok=True)
 
 # Инициализация бота и базы данных
 bot = telebot.TeleBot(BOT_TOKEN)

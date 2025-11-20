@@ -1,6 +1,7 @@
 import telebot
 from telebot import types
 import logging
+import os
 from config import BOT_TOKEN, INITIAL_BONUS_POINTS, FREE_COFFEE_AFTER, ADMIN_IDS, DESSERT_PERCENTAGE, CHANNEL_USERNAME, CHANNEL_ID, CHANNEL_URL
 from database import Database
 from keyboards import *
@@ -11,6 +12,9 @@ import sqlite3
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Создаем папку data если ее нет
+os.makedirs('data', exist_ok=True)
 
 # Инициализация бота и базы данных
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -988,7 +992,7 @@ def format_client_info_for_admin(client):
 @bot.message_handler(func=lambda message: message.text == '📊 Статистика' and is_admin(message.from_user.id))
 def show_statistics(message):
     """Показывает общую статистику"""
-    conn = sqlite3.connect('loyalty.db')
+    conn = sqlite3.connect('data/loyalty.db')
     cursor = conn.cursor()
 
     # Общее количество клиентов

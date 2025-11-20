@@ -1,16 +1,20 @@
 import sqlite3
 import logging
+import os
 from datetime import datetime, timedelta
 from config import INITIAL_BONUS_POINTS, DESSERT_PERCENTAGE, FREE_COFFEE_AFTER, BIRTHDAY_BONUS_POINTS
 
 
 class Database:
     def __init__(self, db_name='loyalty.db'):
-        self.db_name = db_name
+        self.db_name = os.path.join('data', db_name)
         self.init_db()
 
     def init_db(self):
         """Инициализация базы данных"""
+        # Создаем папку data, если она не существует
+        os.makedirs('data', exist_ok=True)
+
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
 

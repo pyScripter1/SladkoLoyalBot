@@ -1,6 +1,11 @@
 from database import Database
 from birthday_scheduler import check_birthdays
 import sys
+import os
+
+
+# Создаем папку data если ее нет
+os.makedirs('data', exist_ok=True)
 
 
 def test_birthday_function():

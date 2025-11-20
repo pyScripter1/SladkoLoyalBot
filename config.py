@@ -1,7 +1,7 @@
 import os
 
 # Конфигурация бота
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8558652101:AAFVJ6XcyRF2jiz7n_YSZpp4fVxMcp7expI')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 
 # Настройки лояльности
 INITIAL_BONUS_POINTS = 100

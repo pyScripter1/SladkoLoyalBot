@@ -1,7 +1,7 @@
 import sqlite3
 import logging
-from datetime import datetime
-from config import INITIAL_BONUS_POINTS, DESSERT_PERCENTAGE, FREE_COFFEE_AFTER
+from datetime import datetime, timedelta
+from config import INITIAL_BONUS_POINTS, DESSERT_PERCENTAGE, FREE_COFFEE_AFTER, BIRTHDAY_BONUS_POINTS
 
 
 class Database:
@@ -261,3 +261,87 @@ class Database:
             })
         conn.close()
         return clients
+
+    def get_clients_with_upcoming_birthdays(self, days_ahead):
+        """Получение клиентов с днями рождения через указанное количество дней"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+
+        # Получаем текущую дату и целевую дату
+        today = datetime.now().date()
+        target_date = today + timedelta(days=days_ahead)
+
+        # Форматируем даты для сравнения (ДД.ММ)
+        today_str = today.strftime('%d.%m')
+        target_str = target_date.strftime('%d.%m')
+
+        clients = []
+
+        try:
+            # Ищем клиентов с днем рождения в целевую дату
+            cursor.execute('''
+                SELECT telegram_id, name, phone, birth_date, points 
+                FROM clients 
+                WHERE birth_date IS NOT NULL AND birth_date != ''
+            ''')
+
+            all_clients = cursor.fetchall()
+
+            for client in all_clients:
+                telegram_id, name, phone, birth_date, points = client
+
+                if birth_date:
+                    try:
+                        # Извлекаем день и месяц из даты рождения
+                        birth_day_month = birth_date[-5:]  # Берем последние 5 символов (ДД.ММ)
+
+                        # Сравниваем с целевой датой
+                        if birth_day_month == target_str:
+                            clients.append({
+                                'telegram_id': telegram_id,
+                                'name': name,
+                                'phone': phone,
+                                'birth_date': birth_date,
+                                'points': points
+                            })
+                    except (ValueError, IndexError):
+                        # Пропускаем некорректные даты
+                        continue
+
+        except Exception as e:
+            print(f"Ошибка при поиске дней рождения: {e}")
+        finally:
+            conn.close()
+
+        return clients
+
+
+    def add_birthday_bonus(self, phone, bonus_points):
+        """Добавление бонусных баллов на день рождения"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+
+        try:
+            # Начисляем бонусные баллы
+            cursor.execute('UPDATE clients SET points = points + ? WHERE phone = ?',
+                           (bonus_points, phone))
+
+            # Добавляем запись о транзакции
+            cursor.execute('''
+                INSERT INTO transactions (client_phone, amount, points_earned, products, date, transaction_type)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (phone, 0, bonus_points, "бонус на день рождения", datetime.now().isoformat(), "birthday_bonus"))
+
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            print(f"Ошибка при начислении birthday бонуса: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def mark_birthday_notified(self, phone, notification_date):
+        """Помечаем, что уведомление о дне рождения отправлено"""
+        print(f"Birthday notification sent for {phone} on {notification_date}")
+        return True

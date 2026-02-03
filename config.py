@@ -1,7 +1,7 @@
 import os
 
 # Конфигурация бота
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8558652101:AAFVJ6XcyRF2jiz7n_YSZpp4fVxMcp7expI')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 
 # Настройки лояльности
 INITIAL_BONUS_POINTS = 100
@@ -9,12 +9,12 @@ DESSERT_PERCENTAGE = 3  # 3% от стоимости десертов начис
 FREE_COFFEE_AFTER = 6  # Каждая 6-я чашка бесплатная
 
 # Список администраторов
-ADMIN_IDS = [8406060590, 1920466733]  # Ваш Telegram ID
+ADMIN_IDS = []  # Ваш Telegram ID
 #1920466733,
 # Настройки канала для обязательной подписки
-CHANNEL_USERNAME = "@Sladkovkazani"
-CHANNEL_URL = "https://t.me/Sladkovkazani"
-CHANNEL_ID = -1001642836781
+CHANNEL_USERNAME = ""
+CHANNEL_URL = "https://t.me/"
+CHANNEL_ID = ""
 
 # Настройки birthday рассылки
 BIRTHDAY_NOTIFICATION_DAYS = 7  # За сколько дней уведомлять

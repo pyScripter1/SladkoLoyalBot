@@ -47,12 +47,26 @@ def validate_phone(phone):
         else:
             cleaned_phone = '+' + re.sub(r'\D', '', phone)
 
-        # Проверяем длину (10 или 11 цифр без +)
+        # Получаем только цифры для проверки
         digits_only = re.sub(r'\D', '', cleaned_phone)
+        
+        # Нормализация российских номеров: заменяем первую 8 на 7
+        # Если номер имеет 11 цифр и начинается с 8 (формат 89969090490 или +89969090490)
+        if len(digits_only) == 11 and digits_only[0] == '8':
+            # Заменяем первую 8 на 7
+            cleaned_phone = '+7' + digits_only[1:]
+            digits_only = '7' + digits_only[1:]
+        
         print(f"Cleaned phone: {cleaned_phone}, digits only: {digits_only}, length: {len(digits_only)}")
 
-        # Проверяем длину (10 цифр для формата +7..., 11 цифр для международных номеров)
-        if len(digits_only) in [10, 11]:
+        # Проверяем длину (10 или 11 цифр без +)
+        # Для российских номеров должно быть 11 цифр (7 + 10 цифр номера)
+        if len(digits_only) == 11 and cleaned_phone.startswith('+7'):
+            print(f"Phone validation successful: {cleaned_phone}")
+            return cleaned_phone
+        elif len(digits_only) == 10:
+            # Если 10 цифр, добавляем +7 в начало
+            cleaned_phone = '+7' + digits_only
             print(f"Phone validation successful: {cleaned_phone}")
             return cleaned_phone
         else:
@@ -124,9 +138,36 @@ def format_profile(client):
     coffee_progress = client['coffee_counter'] % FREE_COFFEE_AFTER
     cups_until_free = FREE_COFFEE_AFTER - coffee_progress
 
-    if coffee_progress == 0 and client['coffee_counter'] > 0:
+    # Если осталась 1 чашка до бесплатной, показываем специальное сообщение
+    if cups_until_free == 1:
+        profile += f"\n☕️ *Следующая чашка кофе бесплатная!*"
+    elif coffee_progress == 0 and client['coffee_counter'] > 0:
         profile += f"\n☕️ *Следующая чашка кофе бесплатная!*"
     else:
         profile += f"\n☕️ *До бесплатного кофе осталось:* {cups_until_free} чашек"
 
     return profile
+
+def export_clients_to_excel(db_path="data/loyalty.db"):
+    import sqlite3
+    from openpyxl import Workbook
+    from datetime import datetime
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM clients")
+    rows = cursor.fetchall()
+    headers = [desc[0] for desc in cursor.description]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Clients"
+
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+
+    filename = f"clients_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    wb.save(filename)
+    conn.close()
+    return filename

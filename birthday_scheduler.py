@@ -19,6 +19,27 @@ db = Database()
 def send_birthday_notification(client):
     """Отправка поздравления и начисление 300 баллов за 7 дней до ДР"""
     try:
+        # Проверяем, что у клиента есть telegram_id
+        if not client.get('telegram_id'):
+            print(f"⚠️ Client {client['name']} ({client['phone']}) has no telegram_id, skipping notification")
+            return
+
+        # Сначала начисляем баллы
+        success = db.add_birthday_bonus(client['phone'], BIRTHDAY_BONUS_POINTS)
+        
+        if not success:
+            print(f"❌ Failed to add birthday bonus for {client['name']} ({client['phone']})")
+            return
+
+        # Получаем обновленный баланс после начисления
+        updated_client = db.get_client_by_phone(client['phone'])
+        if not updated_client:
+            print(f"❌ Failed to get updated client data for {client['name']} ({client['phone']})")
+            return
+
+        new_balance = updated_client['points']
+
+        # Формируем и отправляем сообщение с актуальным балансом
         message = f"""
 🎉 *Скоро день рождения!* 🎂
 
@@ -27,31 +48,32 @@ def send_birthday_notification(client):
 Мы дарим вам сладкий подарок:
 • *+{BIRTHDAY_BONUS_POINTS} баллов* уже начислены на ваш счет!
 
-*Ваш текущий баланс:* {client['points'] + BIRTHDAY_BONUS_POINTS} баллов
+*Ваш текущий баланс:* {new_balance} баллов
 
 Приходите в нашу кондитерскую Sladko и отпразднуйте ваш особенный день с нами! 🎊
 
 *Покажите это сообщение бариста для получения подарка в день рождения!*
         """
 
-        bot.send_message(
-            client['telegram_id'],
-            message,
-            parse_mode='Markdown'
-        )
-
-        # Начисляем 300 баллов
-        success = db.add_birthday_bonus(client['phone'], BIRTHDAY_BONUS_POINTS)
-
-        if success:
-            print(
-                f"✅ Birthday notification and {BIRTHDAY_BONUS_POINTS} points sent to {client['name']} ({client['phone']})")
+        # Отправляем сообщение
+        try:
+            bot.send_message(
+                client['telegram_id'],
+                message,
+                parse_mode='Markdown'
+            )
+            
+            # Помечаем, что уведомление отправлено только после успешной отправки
             db.mark_birthday_notified(client['phone'], datetime.now().isoformat())
-        else:
-            print(f"❌ Failed to add birthday bonus for {client['name']}")
+            print(f"✅ Birthday notification and {BIRTHDAY_BONUS_POINTS} points sent to {client['name']} ({client['phone']})")
+            
+        except Exception as send_error:
+            print(f"❌ Error sending message to {client['name']} ({client['phone']}): {send_error}")
+            # Баллы уже начислены, но сообщение не отправлено
+            # Можно добавить логику для отката начисления, если нужно
 
     except Exception as e:
-        print(f"❌ Error sending birthday notification to {client['name']}: {e}")
+        print(f"❌ Error in birthday notification for {client.get('name', 'Unknown')}: {e}")
 
 
 def check_birthdays():
@@ -65,16 +87,26 @@ def check_birthdays():
         print(f"🎉 Found {len(clients)} clients with birthdays in {BIRTHDAY_NOTIFICATION_DAYS} days")
 
         # Отправляем поздравления и начисляем 300 баллов
+        success_count = 0
+        fail_count = 0
+        
         for client in clients:
-            send_birthday_notification(client)
+            try:
+                send_birthday_notification(client)
+                success_count += 1
+            except Exception as e:
+                fail_count += 1
+                print(f"❌ Failed to send notification to {client.get('name', 'Unknown')}: {e}")
 
         if clients:
-            print(f"✅ Successfully sent {len(clients)} birthday notifications with {BIRTHDAY_BONUS_POINTS} points each")
+            print(f"✅ Birthday check completed: {success_count} successful, {fail_count} failed out of {len(clients)} total")
         else:
             print("✅ No birthdays found for today")
 
     except Exception as e:
         print(f"❌ Error in birthday check: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def run_birthday_scheduler():

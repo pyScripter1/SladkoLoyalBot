@@ -2,12 +2,16 @@ import telebot
 from telebot import types
 import logging
 import os
+import shutil
+from datetime import datetime
 from config import BOT_TOKEN, INITIAL_BONUS_POINTS, FREE_COFFEE_AFTER, ADMIN_IDS, DESSERT_PERCENTAGE, CHANNEL_USERNAME, CHANNEL_ID, CHANNEL_URL
 from database import Database
 from keyboards import *
 from utils import *
 from birthday_scheduler import start_birthday_scheduler
 import sqlite3
+from utils import export_clients_to_excel
+
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -221,7 +225,6 @@ def process_gender_step(message):
 *❗️Способы указания номера телефона:*
 
 1. *Автоматически* - нажмите кнопку "Поделиться номером"
-2. *Вручную* - нажмите кнопку "Ввести номер вручную" и введите номер в формате: +79123456789 или 89123456789
 
 _Рекомендуем использовать автоматический способ_ - это быстрее и надежнее!
     """
@@ -243,7 +246,7 @@ def process_phone_choice(message):
 
     if message.text == '📝 Ввести номер вручную':
         bot.send_message(message.chat.id,
-                        "📝 Введите ваш номер телефона в формате +79123456789 или 89123456789:",
+                        "📝 Введите ваш номер телефона в формате +79969090490 или 89969090490",
                         reply_markup=manual_phone_keyboard())
         bot.register_next_step_handler(message, process_manual_phone)
         return
@@ -277,7 +280,7 @@ def process_manual_phone(message):
         process_valid_phone(user_id, phone)
     else:
         bot.send_message(message.chat.id,
-                        "❌ Неверный формат номера. Введите номер в формате +79123456789 или 89123456789:",
+                        "❌ Неверный формат номера. Введите номер в формате +79969090490 или 89969090490",
                         reply_markup=manual_phone_keyboard())
         bot.register_next_step_handler(message, process_manual_phone)
 
@@ -313,7 +316,7 @@ def process_valid_phone(user_id, phone):
 
 Теперь вы можете:
 • Получать *кешбэк 3%* с каждой покупки десертов
-• *Наслаждать бесплатным кофе* после 5 сладких визитов
+• *Наслаждаться бесплатным кофе* после 5 сладких визитов
 
 _Используйте меню ниже и откройте все вкусные возможности Sladko!_ 💛
         """
@@ -369,7 +372,7 @@ def process_phone_step(message):
 
 Теперь вы можете:
 • Получать *кешбэк от 3%* с каждой покупки десертов
-• *Наслаждать бесплатным кофе* после 5 сладких визитов
+• *Наслаждаться бесплатным кофе* после 5 сладких визитов
 
 _Используйте меню ниже и откройте все вкусные возможности Sladko!_ 💛
             """
@@ -610,7 +613,7 @@ def handle_manual_phone_button(message):
 
     if user_id in user_data:
         bot.send_message(message.chat.id,
-                         "📝 Введите ваш номер телефона в формате +79123456789 или 89123456789:",
+                         "📝 Введите ваш номер телефона в формате +79969090490 или 89969090490",
                          reply_markup=manual_phone_keyboard())
         bot.register_next_step_handler(message, process_manual_phone)
     else:
@@ -658,11 +661,20 @@ def show_coffee_counter(message):
         coffee_progress = client['coffee_counter'] % FREE_COFFEE_AFTER
         cups_until_free = FREE_COFFEE_AFTER - coffee_progress
 
+        # Определяем сообщение о прогрессе
+        if cups_until_free == 1:
+            progress_message = "☕️ *Следующая чашка кофе бесплатная!*"
+        elif coffee_progress == 0 and client['coffee_counter'] > 0:
+            progress_message = "☕️ *Следующая чашка кофе бесплатная!*"
+        else:
+            progress_message = f"☕️ *До бесплатного кофе осталось:* {cups_until_free} чашек"
+
         coffee_text = f"""
 *Ваша кофейная статистика, {client['name']}*
 
 ☕️ Выпито чашек кофе: {client['coffee_counter']}
-{'☕️ *Следующая чашка кофе бесплатная!*' if coffee_progress == 0 and client['coffee_counter'] > 0 else ''}
+{progress_message}
+
 И помните: *каждая {FREE_COFFEE_AFTER}-я чашка кофе в подарок!*
         """
         bot.send_message(message.chat.id, coffee_text, parse_mode='Markdown')
@@ -676,7 +688,7 @@ def edit_profile(message):
     client = db.get_client_by_telegram_id(message.from_user.id)
     if client:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add('📛 Изменить имя', '📅 Изменить дату рождения', '📱 Изменить телефон')
+        keyboard.add('📛 Изменить имя', '📱 Изменить телефон')
         keyboard.add('🔙 Назад')
 
         bot.send_message(message.chat.id, "✏️ Что вы хотите изменить?", reply_markup=keyboard)
@@ -716,7 +728,7 @@ def process_new_date(message):
 
 @bot.message_handler(func=lambda message: message.text == "📱 Изменить телефон")
 def change_phone(message):
-    bot.send_message(message.chat.id, "Введите новый номер:", reply_markup=cancel_keyboard())
+    bot.send_message(message.chat.id, "Введите новый номер в формате +79969090490", reply_markup=cancel_keyboard())
     bot.register_next_step_handler(message, process_new_phone)
 
 
@@ -725,7 +737,13 @@ def process_new_phone(message):
         bot.send_message(message.chat.id, "Изменение отменено.", reply_markup=main_menu())
         return
 
-    db.update_client_profile(message.from_user.id, phone=message.text)
+    phone = validate_phone(message.text)
+    if not phone:
+        bot.send_message(message.chat.id, "❌ Неверный формат номера. Введите номер в формате +79969090490", reply_markup=cancel_keyboard())
+        bot.register_next_step_handler(message, process_new_phone)
+        return
+
+    db.update_client_profile(message.from_user.id, phone=phone)
     bot.send_message(message.chat.id, "✅ Номер телефона успешно изменен!", reply_markup=main_menu())
 
 
@@ -744,6 +762,40 @@ def admin_command(message):
                      "• 📊 Просмотр статистики",
                      parse_mode='Markdown',
                      reply_markup=admin_menu())
+
+
+@bot.message_handler(func=lambda message: message.text == '⬇️ Скачать базу клиентов' and is_admin(message.from_user.id))
+def download_clients_db(message):
+    """Админ: отправить текущую SQLite базу данных файлом."""
+    db_path = os.path.join('data', 'loyalty.db')
+
+    if not os.path.exists(db_path):
+        bot.send_message(message.chat.id, "❌ Файл базы данных не найден.", reply_markup=admin_menu())
+        return
+
+    # Чтобы избежать проблем с блокировкой файла SQLite во время чтения,
+    # отправляем копию (снимок) базы.
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    snapshot_path = os.path.join('data', f'loyalty_snapshot_{timestamp}.db')
+
+    try:
+        shutil.copy2(db_path, snapshot_path)
+        with open(snapshot_path, 'rb') as f:
+            bot.send_document(
+                message.chat.id,
+                f,
+                caption=f"🗄️ База клиентов (снимок): {timestamp}",
+                reply_markup=admin_menu()
+            )
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Не удалось отправить базу: {e}", reply_markup=admin_menu())
+    finally:
+        # Удаляем снимок после отправки
+        try:
+            if os.path.exists(snapshot_path):
+                os.remove(snapshot_path)
+        except:
+            pass
 
 
 @bot.message_handler(func=lambda message: message.text == '📱 Начислить баллы' and is_admin(message.from_user.id))
@@ -824,7 +876,8 @@ def process_purchase_type(message):
         else:
             # Обычная покупка кофе
             current_counter = db.get_coffee_counter(admin_data['client_phone'])
-            cups_until_free = FREE_COFFEE_AFTER - (current_counter % FREE_COFFEE_AFTER)
+            coffee_progress = current_counter % FREE_COFFEE_AFTER
+            cups_until_free = FREE_COFFEE_AFTER - coffee_progress
 
             # Уведомляем клиента о начислении чашки кофе
             client = db.get_client_by_phone(admin_data['client_phone'])
@@ -832,10 +885,17 @@ def process_purchase_type(message):
                 try:
                     bot.send_message(
                         client['telegram_id'],
-                        f"☕️ *Начислена чашка кофе!*"
+                        f"☕️ *Начислена чашка кофе!*",
+                        parse_mode='Markdown'
                     )
                 except Exception as e:
                     print(f"Не удалось отправить уведомление клиенту: {e}")
+
+            # Определяем сообщение о прогрессе
+            if cups_until_free == 1:
+                progress_info = "🎉 *Следующая чашка кофе бесплатная!*"
+            else:
+                progress_info = f"🎯 *До бесплатного кофе осталось:* {cups_until_free} чашек"
 
             receipt = f"""
 ☕ *Покупка кофе*
@@ -844,7 +904,7 @@ def process_purchase_type(message):
 📞 Телефон: {admin_data['client_phone']}
 
 📊 *Текущий счетчик кофе:* {current_counter}
-🎯 *До бесплатного кофе осталось:* {cups_until_free} чашек
+{progress_info}
 
 ✅ *Клиент уведомлен о начислении чашки кофе*
 
@@ -975,7 +1035,10 @@ def format_client_info_for_admin(client):
     coffee_progress = client['coffee_counter'] % FREE_COFFEE_AFTER
     cups_until_free = FREE_COFFEE_AFTER - coffee_progress
 
-    if coffee_progress == 0 and client['coffee_counter'] > 0:
+    # Если осталась 1 чашка до бесплатной, показываем специальное сообщение
+    if cups_until_free == 1:
+        info += f"\n🎉 *Следующая чашка кофе бесплатная!*"
+    elif coffee_progress == 0 and client['coffee_counter'] > 0:
         info += f"\n🎉 *Следующая чашка кофе бесплатная!*"
     else:
         info += f"\n📊 *До бесплатного кофе осталось:* {cups_until_free} чашек"
@@ -1337,6 +1400,13 @@ def exit_admin_mode(message):
     bot.send_message(message.chat.id, "👋 Возвращаемся в главное меню", reply_markup=main_menu())
 
 
+@bot.message_handler(func=lambda message: message.text == '📊 Экспорт в Excel' and is_admin(message.from_user.id))
+def export_excel(message: types.Message):
+    file_path = export_clients_to_excel()
+    with open(file_path, "rb") as f:
+        bot.send_document(message.from_user.id, f)
+    os.remove(file_path)
+
 
 # Запуск бота
 if __name__ == '__main__':
@@ -1350,3 +1420,6 @@ if __name__ == '__main__':
         print(f"❌ Failed to start birthday scheduler: {e}")
 
     bot.infinity_polling()
+
+
+

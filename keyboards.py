@@ -23,6 +23,7 @@ def admin_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add('📱 Начислить баллы', '📊 Статистика')
     keyboard.add('👥 Поиск клиента', '💸 Списать баллы')
+    keyboard.add('⬇️ Скачать базу клиентов', "📊 Экспорт в Excel")
     keyboard.add('📢 Создать рассылку', '🔙 Главное меню')  # Новая кнопка
     return keyboard
 
@@ -80,3 +81,10 @@ def manual_phone_keyboard():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     keyboard.add('❌ Отмена')
     return keyboard
+
+
+# def admin_keyboard():
+#     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+#     kb.add(types.KeyboardButton("⬇️ Скачать базу клиентов"))
+#     kb.add(types.KeyboardButton("📊 Экспорт в Excel"))
+#     return kb

@@ -33,6 +33,17 @@ class Database:
             )
         ''')
 
+        # --- Миграции (безопасно для уже существующей базы) ---
+        # Нужны, чтобы:
+        # 1) не начислять бонус/не слать уведомление повторно каждый день/при перезапуске
+        # 2) хранить факт уведомления в текущем году
+        cursor.execute("PRAGMA table_info(clients)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if 'birthday_notified_year' not in existing_cols:
+            cursor.execute('ALTER TABLE clients ADD COLUMN birthday_notified_year INTEGER')
+        if 'birthday_notified_at' not in existing_cols:
+            cursor.execute('ALTER TABLE clients ADD COLUMN birthday_notified_at TEXT')
+
         # Таблица транзакций
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
@@ -275,48 +286,70 @@ class Database:
         today = datetime.now().date()
         target_date = today + timedelta(days=days_ahead)
 
-        # Форматируем даты для сравнения (ДД.ММ)
-        today_str = today.strftime('%d.%m')
+        # Форматируем дату для сравнения (ДД.ММ)
         target_str = target_date.strftime('%d.%m')
+        current_year = today.year
+
+        print(f"🔍 Searching for birthdays on {target_str} (in {days_ahead} days from today {today.strftime('%d.%m.%Y')})")
 
         clients = []
 
         try:
             # Ищем клиентов с днем рождения в целевую дату
             cursor.execute('''
-                SELECT telegram_id, name, phone, birth_date, points 
+                SELECT telegram_id, name, phone, birth_date, points, birthday_notified_year
                 FROM clients 
                 WHERE birth_date IS NOT NULL AND birth_date != ''
             ''')
 
             all_clients = cursor.fetchall()
+            print(f"📋 Found {len(all_clients)} clients with birth dates in database")
 
             for client in all_clients:
-                telegram_id, name, phone, birth_date, points = client
+                telegram_id, name, phone, birth_date, points, birthday_notified_year = client
 
                 if birth_date:
                     try:
-                        # Извлекаем день и месяц из даты рождения
-                        birth_day_month = birth_date[-5:]  # Берем последние 5 символов (ДД.ММ)
+                        # В базе дата хранится как строка "ДД.ММ.ГГГГ".
+                        # Правильно: первые 5 символов ("ДД.ММ").
+                        birth_day_month = birth_date[:5]
+
+                        # Если уже отправляли уведомление/начисляли бонус в этом году — пропускаем.
+                        if birthday_notified_year is not None and birthday_notified_year == current_year:
+                            print(f"⏭️ Skipping {name} ({phone}): already notified in {birthday_notified_year}")
+                            continue
 
                         # Сравниваем с целевой датой
                         if birth_day_month == target_str:
-                            clients.append({
-                                'telegram_id': telegram_id,
-                                'name': name,
-                                'phone': phone,
-                                'birth_date': birth_date,
-                                'points': points
-                            })
-                    except (ValueError, IndexError):
+                            # Проверяем, что у клиента есть telegram_id
+                            if telegram_id:
+                                print(f"✅ Found matching birthday: {name} ({phone}) - {birth_date}")
+                                clients.append({
+                                    'telegram_id': telegram_id,
+                                    'name': name,
+                                    'phone': phone,
+                                    'birth_date': birth_date,
+                                    'points': points
+                                })
+                            else:
+                                print(f"⚠️ Skipping {name} ({phone}): no telegram_id")
+                        else:
+                            # Для отладки можно раскомментировать:
+                            # print(f"   {name}: {birth_day_month} != {target_str}")
+                            pass
+                    except (ValueError, IndexError) as e:
                         # Пропускаем некорректные даты
+                        print(f"⚠️ Invalid birth_date format for {name} ({phone}): {birth_date}, error: {e}")
                         continue
 
         except Exception as e:
-            print(f"Ошибка при поиске дней рождения: {e}")
+            print(f"❌ Ошибка при поиске дней рождения: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             conn.close()
 
+        print(f"🎯 Total clients found with matching birthdays: {len(clients)}")
         return clients
 
 
@@ -347,5 +380,20 @@ class Database:
 
     def mark_birthday_notified(self, phone, notification_date):
         """Помечаем, что уведомление о дне рождения отправлено"""
-        print(f"Birthday notification sent for {phone} on {notification_date}")
-        return True
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        try:
+            year = datetime.now().year
+            cursor.execute(
+                'UPDATE clients SET birthday_notified_year = ?, birthday_notified_at = ? WHERE phone = ?',
+                (year, notification_date, phone)
+            )
+            conn.commit()
+            print(f"Birthday notification marked for {phone} on {notification_date} (year={year})")
+            return True
+        except Exception as e:
+            conn.rollback()
+            print(f"Ошибка при mark_birthday_notified для {phone}: {e}")
+            return False
+        finally:
+            conn.close()

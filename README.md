@@ -45,7 +45,7 @@ Telegram-бот для системы лояльности кондитерск�
 
 ```bash
 git clone <repository-url>
-cd SladkoLoyalBotVer2
+cd SladkoLoyalBot
 ```
 
 ### 2. Создание виртуального окружения
